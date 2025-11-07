@@ -100,37 +100,39 @@ def gas_params():
     g = w3.eth.gas_price
     return {"gasPrice": g, "chainId": w3.eth.chain_id}
 
-# ---------- Market data (CoinGecko) for AI model ----------
-COINGECKO_PG = "https://api.coingecko.com/api/v3/coins/polygon/market_chart"
 # ============================================================
-# FETCH PRICE HISTORY (Coingecko or similar API)
+# FETCH PRICE HISTORY (OKX public API)
 # ============================================================
 def fetch_price_history(days=3, interval="hourly"):
     """
-    Fetch historical price data safely with retry and detailed error logs.
-    Returns: DataFrame with timestamps and prices, or None if failed.
+    Fetch WMATIC/USDT historical data from OKX public API.
+    OKX granularity supports 1h, 4h, 1d, etc.
     """
-    url = "https://api.coingecko.com/api/v3/coins/matic-network/market_chart"
-    params = {"vs_currency": "usd", "days": days, "interval": interval}
+    url = "https://www.okx.com/api/v5/market/candles"
+    params = {"instId": "MATIC-USDT", "bar": "1H", "limit": str(days * 24)}
 
-    for attempt in range(3):  # Try up to 3 times
+    for attempt in range(3):
         try:
             r = requests.get(url, params=params, timeout=10)
             r.raise_for_status()
             data = r.json()
 
-            if "prices" not in data:
-                logging.error("⚠️ API response missing 'prices' field.")
+            if "data" not in data or not data["data"]:
+                logging.error("⚠️ No candle data returned from OKX.")
                 return None
 
-            df = pd.DataFrame(data["prices"], columns=["timestamp", "price"])
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-            logging.info(f"✅ Successfully fetched {len(df)} data points from API.")
-            return df
+            df = pd.DataFrame(data["data"], columns=[
+                "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote", "confirm"
+            ])
+            df["timestamp"] = pd.to_datetime(df["ts"].astype(float), unit="ms")
+            df["price"] = df["c"].astype(float)
+            df = df.sort_values("timestamp").reset_index(drop=True)
+            logging.info(f"✅ OKX price history fetched: {len(df)} records.")
+            return df[["timestamp", "price"]]
 
         except requests.exceptions.RequestException as e:
-            logging.warning(f"⚠️ Attempt {attempt+1}/3 failed fetching price history: {e}")
-            time.sleep(2)  # wait before retry
+            logging.warning(f"⚠️ Attempt {attempt+1}/3 failed fetching OKX data: {e}")
+            time.sleep(2)
 
     logging.error("❌ Failed to fetch price history after 3 attempts.")
     return None
@@ -179,11 +181,11 @@ def train_small_model(df: pd.DataFrame):
 
 
 # ============================================================
-# AI BUY SIGNAL (Main AI signal generator)
+# AI BUY SIGNAL (Simple SMA Crossover AI Logic)
 # ============================================================
 def ai_buy_signal():
     """
-    Generate AI-based BUY signal with safe fallbacks and logging.
+    Generate AI-based BUY signal using OKX price data.
     Returns: bool
     """
     try:
@@ -192,17 +194,15 @@ def ai_buy_signal():
             logging.error("❌ No price data available. Cannot generate AI signal.")
             return False
 
-        # Example logic (replace with your ML model or signal generator)
-        # ---------------------------------------------------------------
+        # Simple AI logic: 5h SMA > 20h SMA triggers BUY
         df["sma_fast"] = df["price"].rolling(5).mean()
         df["sma_slow"] = df["price"].rolling(20).mean()
 
         latest_fast = df["sma_fast"].iloc[-1]
         latest_slow = df["sma_slow"].iloc[-1]
+        signal = latest_fast > latest_slow
 
-        signal = latest_fast > latest_slow  # Simple moving average crossover
         logging.info(f"🤖 AI Signal computed | SMA_fast={latest_fast:.4f} | SMA_slow={latest_slow:.4f} | Signal={signal}")
-
         return signal
 
     except Exception as e:

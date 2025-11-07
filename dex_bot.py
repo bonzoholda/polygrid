@@ -105,17 +105,21 @@ def gas_params():
 # ============================================================
 def fetch_price_history(days=3, interval="hourly"):
     """
-    Fetch WMATIC/USDT historical data from OKX public API.
+    Fetch POL/USDT historical data from OKX public API.
     OKX granularity supports 1h, 4h, 1d, etc.
     """
     url = "https://www.okx.com/api/v5/market/candles"
-    params = {"instId": "MATIC-USDT", "bar": "1H", "limit": str(days * 24)}
+    params = {"instId": "POL-USDT", "bar": "1H", "limit": str(days * 24)}
 
     for attempt in range(3):
         try:
             r = requests.get(url, params=params, timeout=10)
             r.raise_for_status()
             data = r.json()
+
+            # Log full response if API code != 0
+            if data.get("code") != "0":
+                logging.warning(f"⚠️ OKX API returned code={data.get('code')}, msg={data.get('msg')}")
 
             if "data" not in data or not data["data"]:
                 logging.error("⚠️ No candle data returned from OKX.")
@@ -127,7 +131,7 @@ def fetch_price_history(days=3, interval="hourly"):
             df["timestamp"] = pd.to_datetime(df["ts"].astype(float), unit="ms")
             df["price"] = df["c"].astype(float)
             df = df.sort_values("timestamp").reset_index(drop=True)
-            logging.info(f"✅ OKX price history fetched: {len(df)} records.")
+            logging.info(f"✅ OKX price history fetched: {len(df)} records for POL/USDT.")
             return df[["timestamp", "price"]]
 
         except requests.exceptions.RequestException as e:
@@ -136,6 +140,7 @@ def fetch_price_history(days=3, interval="hourly"):
 
     logging.error("❌ Failed to fetch price history after 3 attempts.")
     return None
+
 
 def feature_engineer(df: pd.DataFrame, window=14):
     df = df.copy()

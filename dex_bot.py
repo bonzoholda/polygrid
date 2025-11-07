@@ -92,8 +92,15 @@ def get_nonce():
 
 def send_tx(tx):
     signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
-    tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+    raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
+    if raw is None:
+        raise AttributeError("Web3 signed transaction missing raw transaction field.")
+    tx_hash = w3.eth.send_raw_transaction(raw)
+    logging.info(f"✅ Transaction sent: {tx_hash.hex()}")
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    logging.info(f"🧾 Tx confirmed in block {receipt.blockNumber}")
     return tx_hash.hex()
+
 
 def gas_params():
     # Keep simple: use w3.eth.gas_price; you can swap to EIP-1559 style if you want.

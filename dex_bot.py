@@ -102,19 +102,38 @@ def gas_params():
 
 # ---------- Market data (CoinGecko) for AI model ----------
 COINGECKO_PG = "https://api.coingecko.com/api/v3/coins/polygon/market_chart"
-def fetch_price_history(days=2, vs_currency="usd", interval="hourly"):
+# ============================================================
+# FETCH PRICE HISTORY (Coingecko or similar API)
+# ============================================================
+def fetch_price_history(days=3, interval="hourly"):
     """
-    returns DataFrame with columns ['timestamp','price']
-    CoinGecko endpoint for polygon native token (MATIC). We'll use price for WMATIC/MATIC parity.
+    Fetch historical price data safely with retry and detailed error logs.
+    Returns: DataFrame with timestamps and prices, or None if failed.
     """
-    params = {"vs_currency": vs_currency, "days": days, "interval": interval}
-    r = requests.get(COINGECKO_PG, params=params, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    prices = data.get("prices", [])  # [ [ts, price], ... ]
-    df = pd.DataFrame(prices, columns=["timestamp", "price"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    return df
+    url = "https://api.coingecko.com/api/v3/coins/matic-network/market_chart"
+    params = {"vs_currency": "usd", "days": days, "interval": interval}
+
+    for attempt in range(3):  # Try up to 3 times
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+
+            if "prices" not in data:
+                logging.error("⚠️ API response missing 'prices' field.")
+                return None
+
+            df = pd.DataFrame(data["prices"], columns=["timestamp", "price"])
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            logging.info(f"✅ Successfully fetched {len(df)} data points from API.")
+            return df
+
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"⚠️ Attempt {attempt+1}/3 failed fetching price history: {e}")
+            time.sleep(2)  # wait before retry
+
+    logging.error("❌ Failed to fetch price history after 3 attempts.")
+    return None
 
 def feature_engineer(df: pd.DataFrame, window=14):
     df = df.copy()
@@ -158,30 +177,36 @@ def train_small_model(df: pd.DataFrame):
     model.fit(X_train, y_train)
     return model
 
+
+# ============================================================
+# AI BUY SIGNAL (Main AI signal generator)
+# ============================================================
 def ai_buy_signal():
     """
-    Fetch price history, train tiny model, predict current moment.
-    Returns True if model suggests buy, else False.
+    Generate AI-based BUY signal with safe fallbacks and logging.
+    Returns: bool
     """
     try:
         df = fetch_price_history(days=3, interval="hourly")
-        model = train_small_model(df)
-        if model is None:
-            logging.info("AI model fallback: using simple SMA momentum rule.")
-            latest = df.copy()
-            latest["sma5"] = latest["price"].rolling(5).mean()
-            latest["sma20"] = latest["price"].rolling(20).mean()
-            if latest["sma5"].iloc[-1] > latest["sma20"].iloc[-1]:
-                return True
+        if df is None or df.empty:
+            logging.error("❌ No price data available. Cannot generate AI signal.")
             return False
-        # create latest features for predict
-        feat_df = feature_engineer(df).iloc[-1:]
-        X = feat_df[["ret1", "sma", "std", "momentum", "rsi"]]
-        pred = model.predict_proba(X)[0,1]
-        logging.info(f"AI buy probability: {pred:.3f}")
-        return pred > 0.55
+
+        # Example logic (replace with your ML model or signal generator)
+        # ---------------------------------------------------------------
+        df["sma_fast"] = df["price"].rolling(5).mean()
+        df["sma_slow"] = df["price"].rolling(20).mean()
+
+        latest_fast = df["sma_fast"].iloc[-1]
+        latest_slow = df["sma_slow"].iloc[-1]
+
+        signal = latest_fast > latest_slow  # Simple moving average crossover
+        logging.info(f"🤖 AI Signal computed | SMA_fast={latest_fast:.4f} | SMA_slow={latest_slow:.4f} | Signal={signal}")
+
+        return signal
+
     except Exception as e:
-        logging.exception("AI signal generation failed, defaulting to False.")
+        logging.error(f"AI signal generation failed, defaulting to False. Error: {e}", exc_info=True)
         return False
 
 # ---------- Trading logic / position tracking ----------

@@ -264,6 +264,31 @@ def get_matic_price_from_coingecko():
     except Exception:
         return None
 
+def get_pol_price_from_okx():
+    """
+    Fetch latest POL/USDT price directly from OKX public API.
+    Returns: float or None
+    """
+    try:
+        url = "https://www.okx.com/api/v5/market/ticker"
+        params = {"instId": "POL-USDT"}
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        if data.get("code") != "0" or not data.get("data"):
+            logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
+            return None
+
+        price = float(data["data"][0]["last"])
+        logging.info(f"💰 Current POL price: {price:.6f} USDT")
+        return price
+
+    except Exception as e:
+        logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
+        return None
+
+
 def estimate_amounts_out(amount_in, path):
     try:
         amounts = router.functions.getAmountsOut(int(amount_in), path).call()
@@ -375,7 +400,7 @@ def main_loop(poll_interval=60):
                     logging.info("No buy signal or insufficient USDT. Sleeping.")
             else:
                 # in position: monitor grid and check for DCA triggers and TP
-                price = get_matic_price_from_coingecko()
+                price = get_pol_price_from_okx()
                 if price is None:
                     logging.warning("Couldn't fetch price; skipping cycle.")
                     time.sleep(poll_interval)

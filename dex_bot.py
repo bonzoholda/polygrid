@@ -298,9 +298,14 @@ def estimate_amounts_out(amount_in, path):
 
 def approve_if_needed(token_contract, spender, owner_addr, amount):
     allowance = token_contract.functions.allowance(owner_addr, spender).call()
-    if allowance >= int(amount):
-        return True
     dec = get_token_decimals(token_contract)
+    logging.info(f"Current allowance: {allowance / (10 ** dec)} tokens")
+
+    if allowance >= int(amount):
+        logging.info("Sufficient allowance, no approval needed.")
+        return True
+
+    logging.info("Approving max allowance for spender...")
     max_approve = 2 ** 256 - 1
     tx = token_contract.functions.approve(spender, max_approve).build_transaction({
         "from": owner_addr,
@@ -308,10 +313,15 @@ def approve_if_needed(token_contract, spender, owner_addr, amount):
         **gas_params()
     })
     tx_hash = send_tx(tx)
-    logging.info(f"Approve tx sent: {tx_hash}")
-    # NOTE: no wait for receipt here; a production runner should wait & confirm
-    time.sleep(2)
+    logging.info(f"Approval tx sent: {tx_hash}")
+    time.sleep(3)
+
+    # Recheck after a delay
+    new_allowance = token_contract.functions.allowance(owner_addr, spender).call()
+    if new_allowance < int(amount):
+        raise RuntimeError("Approval failed — allowance still insufficient!")
     return True
+
 
 def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
     """

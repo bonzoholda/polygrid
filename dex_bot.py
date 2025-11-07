@@ -352,28 +352,62 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
     time.sleep(2)
     return tx_hash
 
-def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
-    dec_wmatic = get_token_decimals(wmatic)
-    dec_usdt = get_token_decimals(usdt)
-    amt_in = to_decimals(amount_in_wmatic, dec_wmatic)
-    path = [WMATIC_ADDR, USDT_ADDR]
-    amounts = estimate_amounts_out(amt_in, path)
-    if not amounts:
-        raise RuntimeError("Failed to estimate amounts out.")
-    out_est = amounts[-1]
-    out_min = int(out_est * (1 - slippage))
-    approve_if_needed(wmatic, ROUTER_ADDR, OWNER, amt_in)
-    tx = router.functions.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-        amt_in, out_min, path, OWNER, int(time.time()) + 60*10
-    ).build_transaction({
+
+def approve_token_direct(token_contract, spender, amount):
+    """
+    Always send approval tx (without allowance check).
+    """
+    tx = token_contract.functions.approve(spender, amount).build_transaction({
         "from": OWNER,
         "nonce": get_nonce(),
         **gas_params()
     })
     tx_hash = send_tx(tx)
-    logging.info(f"Swap WMATIC->USDT tx sent: {tx_hash}")
+    logging.info(f"Approval tx sent: {tx_hash}")
     time.sleep(2)
     return tx_hash
+
+
+def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
+    """
+    Swap WMATIC -> USDT using QuickSwap (POL network).
+    """
+    try:
+        dec_wmatic = get_token_decimals(wmatic)
+        dec_usdt = get_token_decimals(usdt)
+
+        # Convert to wei (use web3.to_wei to be consistent)
+        amt_in = w3.to_wei(amount_in_wmatic, 'ether')  # WMATIC = 18 decimals
+
+        path = [WMATIC_ADDR, USDT_ADDR]
+        amounts = estimate_amounts_out(amt_in, path)
+        if not amounts:
+            raise RuntimeError("Failed to estimate amounts out.")
+        
+        out_est = amounts[-1]
+        out_min = int(out_est * (1 - slippage))
+
+        # ✅ Explicit approval (don’t rely on allowance logic)
+        logging.info("Approving WMATIC for router (force refresh)...")
+        approve_token_direct(wmatic, ROUTER_ADDR, amt_in)
+
+        tx = router.functions.swapExactTokensForTokens(
+            amt_in, out_min, path, OWNER, int(time.time()) + 60*10
+        ).build_transaction({
+            "from": OWNER,
+            "nonce": get_nonce(),
+            **gas_params()
+        })
+
+        tx_hash = send_tx(tx)
+        logging.info(f"Swap WMATIC->USDT tx sent: {tx_hash}")
+        time.sleep(2)
+        return tx_hash
+
+    except Exception as e:
+        logging.error(f"swap_wmatic_to_usdt() failed: {e}")
+        raise
+
 
 # ---------- Main bot behavior ----------
 def main_loop(poll_interval=60):

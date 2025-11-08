@@ -446,7 +446,7 @@ def main_loop(poll_interval=60):
                     # read WMATIC balance diff to estimate amount bought
                     # For simplicity: read current WMATIC balance (assumes zero before)
                     wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
-                    position.buy_prices.append(get_matic_price_from_coingecko() or 0.0)
+                    position.buy_prices.append(get_pol_price_from_okx() or 0.0)
                     position.amounts_wmatic.append(wmatic_bal) # crude: in practice compute exact amount
                     position.total_usdt_spent += lot_size
                     in_position = True

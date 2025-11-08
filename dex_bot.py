@@ -337,7 +337,7 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
     out_est = amounts[-1]
     out_min = int(out_est * (1 - slippage))
     # ensure approval
-    approve_token_direct(usdt, ROUTER_ADDR, OWNER, amt_in)
+    approve_token_direct(usdt, ROUTER_ADDR, amt_in)
     tx = router.functions.swapExactTokensForTokens(
         amt_in, out_min, path, OWNER, int(time.time()) + 60*10
     ).build_transaction({

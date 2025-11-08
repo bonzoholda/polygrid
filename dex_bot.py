@@ -464,7 +464,7 @@ def main_loop(poll_interval=60):
                 # compute profit percent
                 profit_pct = position.realized_profit_pct(price)
                 logging.info(f"Unrealized profit: {profit_pct:.4f}%")
-                if profit_pct >= 0.5:  # close condition
+                if profit_pct >= 1.5:  # close condition
                     logging.info("Profit threshold reached -> closing position (swap WMATIC -> USDT)")
                     total_wmatic = get_onchain_token_balance(wmatic, OWNER)
                     if total_wmatic > 0:

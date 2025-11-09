@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from manager import (
     init_db, add_user, get_users, get_user, get_user_by_username,
-    verify_user, decrypt_key, start_bot, stop_bot, auto_resume, tail_log
+    verify_user, decrypt_key, start_bot, stop_bot, auto_resume, tail_log, LOG_DIR
 )
 
 app = FastAPI()
@@ -126,13 +126,15 @@ def logs(uid: int, request: Request):
 def stream_logs(uid: int):
     def log_generator():
         path = os.path.join(LOG_DIR, f"user_{uid}.log")
+        if not os.path.exists(path):
+            open(path, "w").close()  # create empty log
         with open(path, "r") as f:
-            # Go to end of file
-            f.seek(0, 2)
+            f.seek(0, os.SEEK_END)  # go to end of file
             while True:
                 line = f.readline()
-                if not line:
+                if line:
+                    yield f"data: {line.rstrip()}\n\n"
+                else:
                     time.sleep(0.5)
-                    continue
-                yield f"data: {line}\n\n"
+
     return StreamingResponse(log_generator(), media_type="text/event-stream")

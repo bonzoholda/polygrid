@@ -93,14 +93,18 @@ def stop(uid: int, request: Request):
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
     def event_generator():
+        last_index = 0
         while True:
+            logs = list(bot_state["logs"])
+            new_logs = logs[last_index:]
+            last_index = len(logs)
             yield f"data: {json.dumps({ \
                 'usdt_balance': bot_state['usdt_balance'], \
                 'ai_signal': bot_state['ai_signal'], \
                 'confidence': bot_state['confidence'], \
                 'rsi': bot_state['rsi'], \
                 'momentum': bot_state['momentum'], \
-                'log': '\n'.join(bot_state['logs']) \
+                'logs': new_logs \
             })}\n\n"
             time.sleep(1)
     return StreamingResponse(event_generator(), media_type="text/event-stream")

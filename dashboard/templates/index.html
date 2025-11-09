@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DEX Bot Dashboard</title>
+  <script src="/static/dashboard.js"></script>
+  <style>
+    body { font-family: sans-serif; background:#0b0c10; color:#eee; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:8px; border-bottom:1px solid #333; text-align:left; }
+    .btn { padding:6px 10px; border:none; cursor:pointer; border-radius:5px; }
+    .start { background:#2ecc71; color:#fff; }
+    .stop { background:#e74c3c; color:#fff; }
+    pre { background:#111; color:#0f0; padding:10px; height:200px; overflow-y:auto; }
+  </style>
+</head>
+<body>
+<h2>🚀 DEX Bot Dashboard</h2>
+<form method="post" action="/register">
+  <input name="name" placeholder="User name" required>
+  <input name="address" placeholder="Wallet address" required>
+  <input name="private_key" placeholder="Private key" required>
+  <button type="submit" class="btn">Add User</button>
+</form>
+
+<table id="userTable">
+  <tr><th>Name</th><th>Address</th><th>Status</th><th>Action</th><th>Logs</th></tr>
+  {% for u in users %}
+  <tr data-id="{{u.id}}">
+    <td>{{u.name}}</td>
+    <td>{{u.address}}</td>
+    <td>{{"🟢 Running" if u.is_active else "🔴 Stopped"}}</td>
+    <td>
+      {% if not u.is_active %}
+        <a href="/start/{{u.id}}" class="btn start">Start</a>
+      {% else %}
+        <a href="/stop/{{u.id}}" class="btn stop">Stop</a>
+      {% endif %}
+    </td>
+    <td><button onclick="viewLogs({{u.id}})" class="btn">View</button></td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h3>📜 Logs</h3>
+<pre id="logBox">(select a user to view logs)</pre>
+</body>
+</html>

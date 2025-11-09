@@ -1,4 +1,4 @@
-import os, sys, threading, time
+import os, sys, threading, time, json
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -124,17 +124,35 @@ def logs(uid: int, request: Request):
 
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
-    def log_generator():
-        path = os.path.join(LOG_DIR, f"user_{uid}.log")
-        if not os.path.exists(path):
-            open(path, "w").close()  # create empty log
-        with open(path, "r") as f:
-            f.seek(0, os.SEEK_END)  # go to end of file
-            while True:
-                line = f.readline()
-                if line:
-                    yield f"data: {line.rstrip()}\n\n"
-                else:
-                    time.sleep(0.5)
+    def event_generator():
+        while True:
+            # Fetch real-time bot info here (replace with your own variables)
+            data = {
+                "usdt_balance": 5.6048,
+                "ai_signal": "SELL",
+                "confidence": 0.495,
+                "rsi": 33.71,
+                "momentum": -0.0222,
+                "log": "USDT balance: 5.604807"
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+            time.sleep(1)  # send every 1 second
 
-    return StreamingResponse(log_generator(), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+#@app.get("/stream_logs/{uid}")
+#def stream_logs(uid: int):
+#    def log_generator():
+#        path = os.path.join(LOG_DIR, f"user_{uid}.log")
+#        if not os.path.exists(path):
+#            open(path, "w").close()  # create empty log
+#        with open(path, "r") as f:
+#            f.seek(0, os.SEEK_END)  # go to end of file
+#            while True:
+#                line = f.readline()
+#                if line:
+#                    yield f"data: {line.rstrip()}\n\n"
+#                else:
+#                    time.sleep(0.5)
+#
+#    return StreamingResponse(log_generator(), media_type="text/event-stream")

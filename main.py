@@ -26,7 +26,7 @@ bot_state = {
     "confidence": 0.0,
     "rsi": 0.0,
     "momentum": 0.0,
-    "logs": deque(maxlen=MAX_LOG_LINES)
+    "logs": []
 }
 
 # ---------- Position class ----------
@@ -73,6 +73,7 @@ def main_loop(poll_interval=60):
 
                 log_line = f"{time.strftime('%H:%M:%S')} | USDT: {usdt_balance_onchain:.4f} | AI: {ai_signal}"
                 bot_state["logs"].append(log_line)
+                bot_state["logs"] = bot_state["logs"][-50:]
                 logging.info(log_line)
 
                 if ai_signal == "BUY" and usdt_balance_onchain > 5:

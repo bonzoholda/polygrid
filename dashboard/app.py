@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from main import bot_state, main_loop
+from main import bot_state
 from manager import init_db, get_user_by_username, verify_user, add_user, start_bot, stop_bot, auto_resume
 
 app = FastAPI()
@@ -19,7 +19,6 @@ init_db()
 @app.on_event("startup")
 def startup_event():
     threading.Thread(target=auto_resume, daemon=True).start()
-    threading.Thread(target=main_loop, daemon=True).start()  # <-- start bot here    
 
 # Auth utils
 def get_current_user(request: Request):
@@ -89,27 +88,11 @@ def stop(uid: int, request: Request):
     stop_bot(uid)
     return RedirectResponse("/", status_code=303)
 
-# SSE endpoint: live bot_state
+# SSE endpoint: send full bot_state every second
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
     def event_generator():
-        last_index = 0
         while True:
-            # Ensure logs is a list of lines
-            logs = bot_state.get("logs", "")
-            if isinstance(logs, str):
-                logs = logs.splitlines()
-            new_logs = logs[last_index:]
-            last_index = len(logs)
-
-            yield f"data: {json.dumps({ \
-                'usdt_balance': bot_state.get('usdt_balance', 0.0), \
-                'ai_signal': bot_state.get('ai_signal', '--'), \
-                'confidence': bot_state.get('confidence', 0.0), \
-                'rsi': bot_state.get('rsi', 0.0), \
-                'momentum': bot_state.get('momentum', 0.0), \
-                'log': "\n".join(new_logs) \
-            })}\n\n"
-            time.sleep(1)
+            yield f"data: {json.dumps(bot_state)}\n\n"
+            time.sleep(5)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-

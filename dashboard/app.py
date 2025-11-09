@@ -1,6 +1,6 @@
-import os, sys, threading
+import os, sys, threading, time
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -121,3 +121,18 @@ def logs(uid: int, request: Request):
     return HTMLResponse("<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
                         + "".join(log_lines) + "</pre>")
 
+
+@app.get("/stream_logs/{uid}")
+def stream_logs(uid: int):
+    def log_generator():
+        path = os.path.join(LOG_DIR, f"user_{uid}.log")
+        with open(path, "r") as f:
+            # Go to end of file
+            f.seek(0, 2)
+            while True:
+                line = f.readline()
+                if not line:
+                    time.sleep(0.5)
+                    continue
+                yield f"data: {line}\n\n"
+    return StreamingResponse(log_generator(), media_type="text/event-stream")

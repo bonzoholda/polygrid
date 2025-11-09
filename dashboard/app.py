@@ -7,7 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from main import bot_state
-from manager import init_db, get_user_by_username, verify_user, add_user, start_bot, stop_bot, auto_resume
+from manager import init_db, get_user_by_username, verify_user, add_user, start_bot, stop_bot, auto_resume, LOG_DIR
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET","supersecret"))

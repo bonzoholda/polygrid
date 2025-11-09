@@ -13,7 +13,7 @@
         button { padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; margin: 0.1rem; }
         .start { background: #4CAF50; color: #fff; }
         .stop { background: #f44336; color: #fff; }
-        pre { background: #1e1e1e; padding: 1rem; border-radius: 8px; max-height: 400px; overflow-y: scroll; }
+        pre { background: #1e1e1e; padding: 1rem; border-radius: 8px; max-height: 400px; overflow-y: scroll; color: #0f0; }
     </style>
 </head>
 <body>
@@ -42,22 +42,22 @@
         </form>
 
         <h3>Logs</h3>
-        <iframe src="/logs/{{ user['id'] }}" style="width:100%; height:400px; border:none; background:#1e1e1e; color:#0f0;"></iframe>
+        <pre id="log"></pre>
     </div>
 
-    <pre id="log" style="color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px; max-height:400px; overflow-y:scroll;"></pre>
-    
     <script>
-    const logElement = document.getElementById("log");
-    const uid = {{ user['id'] }};
-    const evtSource = new EventSource(`/stream_logs/${uid}`);
-    
-    evtSource.onmessage = function(e) {
-        logElement.innerHTML += e.data + "\n";
-        logElement.scrollTop = logElement.scrollHeight;
-    };
-    </script>
+        const logElement = document.getElementById("log");
+        const uid = {{ user['id'] }};
+        const evtSource = new EventSource(`/stream_logs/${uid}`);
 
-    
+        evtSource.onmessage = function(e) {
+            logElement.innerHTML += e.data + "\n";
+            logElement.scrollTop = logElement.scrollHeight;
+        };
+
+        evtSource.onerror = function() {
+            console.error("SSE connection lost, attempting to reconnect...");
+        };
+    </script>
 </body>
 </html>

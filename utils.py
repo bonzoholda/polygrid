@@ -3,7 +3,7 @@ import time
 import logging
 import requests
 from web3 import Web3
-from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR
+from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, USDT_ADDR, WMATIC_ADDR
 
 # ---------- Helper Functions ----------
 

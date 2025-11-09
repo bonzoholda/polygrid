@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from main import bot_state
+from main import bot_state, main_loop
 from manager import init_db, get_user_by_username, verify_user, add_user, start_bot, stop_bot, auto_resume
 
 app = FastAPI()
@@ -19,6 +19,7 @@ init_db()
 @app.on_event("startup")
 def startup_event():
     threading.Thread(target=auto_resume, daemon=True).start()
+    threading.Thread(target=main_loop, daemon=True).start()  # <-- start bot here    
 
 # Auth utils
 def get_current_user(request: Request):

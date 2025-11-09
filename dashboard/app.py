@@ -94,22 +94,23 @@ def register(
 # -----------------
 # Bot actions
 # -----------------
-@app.get("/start")
-def start(request: Request):
+@app.api_route("/start/{uid}", methods=["GET", "POST"])
+def start(uid: int, request: Request):
     user = get_current_user(request)
-    if not user:
+    if not user or user["id"] != uid:
         return RedirectResponse("/login", status_code=303)
-    start_bot(user["id"])
+    start_bot(uid)
     return RedirectResponse("/", status_code=303)
 
 
-@app.get("/stop")
-def stop(request: Request):
+@app.api_route("/stop/{uid}", methods=["GET", "POST"])
+def stop(uid: int, request: Request):
     user = get_current_user(request)
-    if not user:
+    if not user or user["id"] != uid:
         return RedirectResponse("/login", status_code=303)
-    stop_bot(user["id"])
+    stop_bot(uid)
     return RedirectResponse("/", status_code=303)
+
 
 
 @app.get("/logs", response_class=HTMLResponse)

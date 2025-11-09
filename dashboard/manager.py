@@ -1,6 +1,6 @@
 import subprocess, signal, sqlite3, time, logging, os, sys
 
-# allow imports from root project folder
+# Allow imports from root project folder
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 DB_FILE = os.path.join(os.path.dirname(__file__), "bots.db")
@@ -65,6 +65,7 @@ def set_active(uid, active):
 # Bot process management
 # ------------------------------
 def start_bot(uid):
+    """Start the trading bot subprocess for the given user."""
     user = get_user(uid)
     if not user or processes.get(uid):
         return False
@@ -72,6 +73,15 @@ def start_bot(uid):
     os.makedirs(LOG_DIR, exist_ok=True)
     log_file = os.path.join(LOG_DIR, f"user_{uid}.log")
 
+    # Path to main bot script in the project root
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    bot_path = os.path.join(project_root, "main.py")
+
+    if not os.path.exists(bot_path):
+        logging.error(f"❌ Bot file not found at {bot_path}")
+        return False
+
+    # Environment variables for bot process
     env = os.environ.copy()
     env["OWNER_ADDR"] = user["address"]
     env["PRIVATE_KEY"] = user["private_key"]
@@ -79,8 +89,10 @@ def start_bot(uid):
     with open(log_file, "a") as f:
         f.write(f"\n=== Starting bot for {user['name']} ===\n")
 
+    # Start bot process in root folder
     proc = subprocess.Popen(
-        ["python", "main.py"],
+        ["python", bot_path],
+        cwd=project_root,
         env=env,
         stdout=open(log_file, "a"),
         stderr=subprocess.STDOUT,
@@ -88,11 +100,12 @@ def start_bot(uid):
 
     processes[uid] = proc
     set_active(uid, True)
-    logging.info(f"🚀 Started bot {uid} (PID {proc.pid})")
+    logging.info(f"🚀 Started bot {uid} ({user['name']}) [PID {proc.pid}]")
     return True
 
 
 def stop_bot(uid):
+    """Stop the running bot subprocess for the given user."""
     proc = processes.get(uid)
     if proc:
         try:
@@ -109,6 +122,7 @@ def stop_bot(uid):
 
 
 def auto_resume():
+    """Restart bots that were active before shutdown."""
     users = get_users()
     for u in users:
         if u["is_active"]:
@@ -117,6 +131,7 @@ def auto_resume():
 
 
 def tail_log(uid, n=50):
+    """Return the last N lines of a user's bot log."""
     path = os.path.join(LOG_DIR, f"user_{uid}.log")
     if not os.path.exists(path):
         return ["(no log yet)"]

@@ -55,7 +55,6 @@ def logout(request: Request):
 def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
 
-
 @app.post("/register")
 def register(
     request: Request,
@@ -92,19 +91,27 @@ def stop(uid: int, request: Request):
 # SSE endpoint: live bot_state
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
+    """
+    Sends bot_state as SSE every second, including new logs
+    """
     def event_generator():
         last_index = 0
         while True:
-            logs = list(bot_state["logs"])
+            logs = list(bot_state.get("logs", []))
             new_logs = logs[last_index:]
             last_index = len(logs)
-            yield f"data: {json.dumps({ \
-                'usdt_balance': bot_state['usdt_balance'], \
-                'ai_signal': bot_state['ai_signal'], \
-                'confidence': bot_state['confidence'], \
-                'rsi': bot_state['rsi'], \
-                'momentum': bot_state['momentum'], \
-                'logs': new_logs \
-            })}\n\n"
+
+            # Compose data dictionary
+            data = {
+                "usdt_balance": bot_state.get("usdt_balance", 0),
+                "ai_signal": bot_state.get("ai_signal", "--"),
+                "confidence": bot_state.get("confidence", 0),
+                "rsi": bot_state.get("rsi", 0),
+                "momentum": bot_state.get("momentum", 0),
+                "log": "\n".join(new_logs)  # single string for dashboard JS
+            }
+
+            yield f"data: {json.dumps(data)}\n\n"
             time.sleep(1)
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")

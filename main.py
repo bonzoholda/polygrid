@@ -6,6 +6,7 @@ warnings.filterwarnings("ignore", category=UserWarning, message="pkg_resources i
 import time
 import logging
 from typing import Optional
+from datetime import datetime
 from utils import (
     get_pol_price_from_okx,
     get_onchain_token_balance,
@@ -29,6 +30,10 @@ bot_state = {
     "log": ""
 }
 
+# ---------- Helper to update bot_state log ----------
+def update_bot_log(message: str):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    bot_state["log"] = f"{timestamp} | {message}"
 
 # ---------- Position class ----------
 class Position:
@@ -45,10 +50,8 @@ class Position:
         avg_cost = sum(self.buy_prices) / len(self.buy_prices)
         return ((current_price - avg_cost) / avg_cost) * 100
 
-
 # ---------- Initialize AI module ----------
 ml_signal = MLSignalGeneratorOKX()
-
 
 # ---------- Main bot behavior ----------
 def main_loop(poll_interval=60):
@@ -71,19 +74,11 @@ def main_loop(poll_interval=60):
                 logging.info(f"USDT balance: {usdt_balance_onchain:.6f}")
                 logging.info(f"🤖 AI module signal: {ai_signal}")
 
-                # ------- After fetching AI signal
+                # --- update bot_state for dashboard ---
                 bot_state["usdt_balance"] = usdt_balance_onchain
                 bot_state["ai_signal"] = ai_signal
-                # If you want, you can also store confidence, RSI, momentum from ml_signal
-                # Example (assuming ml_signal.generate_signal() returns them or you extract separately):
-                # bot_state["confidence"] = last_confidence
-                # bot_state["rsi"] = last_rsi
-                # bot_state["momentum"] = last_momentum
-                
-                bot_state["log"] = f"{time.strftime('%H:%M:%S')} | USDT balance: {usdt_balance_onchain:.6f} | AI signal: {ai_signal}"
+                bot_state["log"] = f"USDT balance: {usdt_balance_onchain:.6f} | AI signal: {ai_signal}"
 
-                
-                
                 if ai_signal == "BUY" and usdt_balance_onchain > 5:
                     lot_values = [1, 1, 2, 3]
                     lot_total_units = sum(lot_values)
@@ -91,6 +86,7 @@ def main_loop(poll_interval=60):
                     position = Position(lots_alloc=lot_values, lot_size_usdt=lot_size)
 
                     logging.info(f"🟢 BUY signal accepted. Executing initial buy: {lot_size:.6f} USDT")
+                    update_bot_log(f"🟢 BUY signal accepted. Executing initial buy: {lot_size:.6f} USDT")
                     swap_usdt_to_wmatic(lot_size)
 
                     wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
@@ -100,8 +96,10 @@ def main_loop(poll_interval=60):
                     position.total_usdt_spent += lot_size
                     in_position = True
                     logging.info(f"Position opened. WMATIC balance: {wmatic_bal:.6f}")
+                    update_bot_log(f"Position opened. WMATIC balance: {wmatic_bal:.6f}")
                 else:
                     logging.info("No buy signal or insufficient USDT. Sleeping.")
+                    update_bot_log("No buy signal or insufficient USDT. Sleeping.")
                     time.sleep(poll_interval)
                     continue
 
@@ -109,24 +107,29 @@ def main_loop(poll_interval=60):
             price = get_pol_price_from_okx()
             if price is None:
                 logging.warning("Couldn't fetch price; skipping cycle.")
+                update_bot_log("Couldn't fetch price; skipping cycle.")
                 time.sleep(poll_interval)
                 continue
 
             profit_pct = position.realized_profit_pct(price)
             avg_cost = sum(position.buy_prices) / len(position.buy_prices)
             drawdown_pct = ((price / avg_cost) - 1) * 100
-            logging.info(f"📈 Price={price:.6f} | Profit={profit_pct:.2f}% | Drawdown={drawdown_pct:.2f}%")
+            log_msg = f"📈 Price={price:.6f} | Profit={profit_pct:.2f}% | Drawdown={drawdown_pct:.2f}%"
+            logging.info(log_msg)
+            update_bot_log(log_msg)
 
             # --- 3. Profit & Trailing Logic ---
             if not trail_active and profit_pct >= MIN_PROFIT_LOCK * 100:
                 trail_active = True
                 trail_peak = profit_pct
                 logging.info(f"🔒 Trailing profit lock activated at +{trail_peak:.2f}%")
+                update_bot_log(f"🔒 Trailing profit lock activated at +{trail_peak:.2f}%")
 
             if trail_active:
                 trail_peak = max(trail_peak, profit_pct)
                 if profit_pct <= trail_peak - TRAIL_LOCK_STEP * 100:
                     logging.info(f"💰 Trailing stop triggered: locked {trail_peak:.2f}%, now {profit_pct:.2f}%")
+                    update_bot_log(f"💰 Trailing stop triggered: locked {trail_peak:.2f}%, now {profit_pct:.2f}%")
                     total_wmatic = get_onchain_token_balance(wmatic, OWNER)
                     if total_wmatic > 0:
                         swap_wmatic_to_usdt(total_wmatic)
@@ -135,7 +138,7 @@ def main_loop(poll_interval=60):
                     trail_active = False
                     continue
 
-            # --- 4. DCA Logic (AI + Grid Combo) ---
+            # --- 4. DCA Logic ---
             ai_signal = ml_signal.generate_signal()
             last_price = position.buy_prices[-1]
             triggers = [-0.03, -0.07, -0.15]
@@ -147,6 +150,7 @@ def main_loop(poll_interval=60):
                         lot_to_buy = position.lots_alloc[idx]
                         amount_usdt = lot_to_buy * position.lot_size_usdt
                         logging.info(f"🟡 DCA Trigger idx={idx}: buying {lot_to_buy} lots ({amount_usdt:.2f} USDT)")
+                        update_bot_log(f"🟡 DCA Trigger idx={idx}: buying {lot_to_buy} lots ({amount_usdt:.2f} USDT)")
                         swap_usdt_to_wmatic(amount_usdt)
 
                         new_wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
@@ -162,11 +166,13 @@ def main_loop(poll_interval=60):
                         position.buy_prices.append(price)
                         position.total_usdt_spent += amount_usdt
                         logging.info(f"✅ DCA executed at {price:.6f}")
+                        update_bot_log(f"✅ DCA executed at {price:.6f}")
                         break
 
             # --- 5. Stop-loss fallback ---
             if price < avg_cost * 0.88:
                 logging.warning("🔻 Stop-loss hit → selling to preserve capital.")
+                update_bot_log("🔻 Stop-loss hit → selling to preserve capital.")
                 total_wmatic = get_onchain_token_balance(wmatic, OWNER)
                 if total_wmatic > 0:
                     swap_wmatic_to_usdt(total_wmatic)
@@ -179,8 +185,8 @@ def main_loop(poll_interval=60):
 
         except Exception as exc:
             logging.exception("Main loop error, retrying after short sleep.")
+            update_bot_log("Main loop error, retrying after short sleep.")
             time.sleep(10)
-
 
 # ---------- Entry Point ----------
 if __name__ == "__main__":
@@ -190,6 +196,6 @@ if __name__ == "__main__":
     )
     logging.info("🚀 Bot container initialized. Starting trading loop...")
     try:
-        main_loop(poll_interval=60)  # adjust polling interval (seconds)
+        main_loop(poll_interval=60)
     except KeyboardInterrupt:
         logging.info("🛑 Manual stop received. Exiting gracefully...")

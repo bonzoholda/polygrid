@@ -16,7 +16,7 @@ from utils import (
     to_decimals,
     from_decimals,
 )
-from ai_module import fetch_price_history, feature_engineer, train_small_model
+from ai_module import MLSignalGeneratorOKX
 from config import usdt, wmatic, OWNER, USDT_ADDR, WMATIC_ADDR
 
 

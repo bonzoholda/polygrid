@@ -195,3 +195,16 @@ def main_loop(poll_interval=60):
         except Exception as exc:
             logging.exception("Main loop error, retrying after short sleep.")
             time.sleep(10)
+
+
+# ---------- Entry Point ----------
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+    logging.info("🚀 Bot container initialized. Starting trading loop...")
+    try:
+        main_loop(poll_interval=60)  # adjust polling interval (seconds)
+    except KeyboardInterrupt:
+        logging.info("🛑 Manual stop received. Exiting gracefully...")

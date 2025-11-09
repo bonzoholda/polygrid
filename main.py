@@ -1,6 +1,6 @@
 # --- Prevent DeprecationWarnings for pkg_resources (Python 3.12+)
 import warnings
-###warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
 
 # --- Core system imports ---
 import time

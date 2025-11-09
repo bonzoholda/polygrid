@@ -8,28 +8,34 @@ from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, US
 # ---------- Helper Functions ----------
 
 def get_nonce():
-    return w3.eth.get_transaction_count(OWNER, 'pending')  # track pending txs
+    # Track pending transactions to avoid nonce conflicts
+    return w3.eth.get_transaction_count(OWNER, 'pending')
 
 def gas_params():
+    # Use dynamic gas price from network
     return {
         "gas": 250000,
         "gasPrice": w3.eth.gas_price,
         "chainId": 137,
     }
 
-def send_tx(tx, retries=3, gas_bump=1.2):
+def send_tx(tx, retries=3, gas_bump=1.2, timeout=180):
+    """Send transaction with retry and gas bump if underpriced or stuck."""
     for attempt in range(retries):
         try:
             signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
             tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)  # wait 1 min
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
             if receipt["status"] != 1:
-                raise RuntimeError(f"Swap tx failed on-chain: {tx_hash}")
+                raise RuntimeError(f"Tx reverted on-chain: {tx_hash}")
             return w3.to_hex(tx_hash)
+        except web3.exceptions.TimeExhausted:
+            logging.warning(f"Tx {tx_hash.hex()} not mined in {timeout}s, retrying with higher gas...")
+            tx['gasPrice'] = int(tx['gasPrice'] * gas_bump)
+            time.sleep(3)
         except ValueError as e:
             msg = str(e)
             if "replacement transaction underpriced" in msg or "already known" in msg:
-                # bump gas price
                 tx['gasPrice'] = int(tx['gasPrice'] * gas_bump)
                 logging.warning(f"Tx underpriced, bumping gas and retrying... attempt {attempt+1}")
                 time.sleep(2)
@@ -54,25 +60,19 @@ def get_onchain_token_balance(token_contract, wallet):
 # ---------- Price Fetching ----------
 
 def get_pol_price_from_okx():
-    """
-    Fetch latest POL/USDT price directly from OKX public API.
-    Returns: float or None
-    """
+    """Fetch latest POL/USDT price from OKX public API."""
     try:
         url = "https://www.okx.com/api/v5/market/ticker"
         params = {"instId": "POL-USDT"}
         r = requests.get(url, params=params, timeout=10)
         r.raise_for_status()
         data = r.json()
-
         if data.get("code") != "0" or not data.get("data"):
             logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
             return None
-
         price = float(data["data"][0]["last"])
         logging.info(f"💰 Current POL price: {price:.6f} USDT")
         return price
-
     except Exception as e:
         logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
         return None
@@ -83,7 +83,6 @@ def approve_if_needed(token_contract, spender, owner_addr, amount):
     allowance = token_contract.functions.allowance(owner_addr, spender).call()
     if allowance >= int(amount):
         return True
-    dec = get_token_decimals(token_contract)
     max_approve = 2 ** 256 - 1
     tx = token_contract.functions.approve(spender, max_approve).build_transaction({
         "from": owner_addr,
@@ -97,9 +96,7 @@ def approve_if_needed(token_contract, spender, owner_addr, amount):
 
 def approve_token_direct(token_contract, spender, amount):
     """Force-approve a token without checking existing allowance."""
-    tx = token_contract.functions.approve(
-        spender, amount
-    ).build_transaction({
+    tx = token_contract.functions.approve(spender, amount).build_transaction({
         "from": OWNER,
         "nonce": get_nonce(),
         **gas_params()
@@ -117,29 +114,18 @@ def estimate_amounts_out(amount_in, path):
         return None
 
 def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
-    """
-    Swap exact USDT -> WMATIC using QuickSwap (POL network).
-    Uses explicit approval refresh to prevent allowance desync.
-    amount_in_usdt is float (human units).
-    """
+    """Swap exact USDT -> WMATIC with approval retry and gas bump."""
     try:
         dec_usdt = get_token_decimals(usdt)
         dec_wmatic = get_token_decimals(wmatic)
-
-        # Convert input amount to decimals
         amt_in = to_decimals(amount_in_usdt, dec_usdt)
-
-        # Define swap path (USDT -> WMATIC)
         path = [USDT_ADDR, WMATIC_ADDR]
-
-        # Estimate expected output
         amounts = estimate_amounts_out(amt_in, path)
         if not amounts:
             raise RuntimeError("Failed to estimate amounts out.")
         out_est = amounts[-1]
         out_min = int(out_est * (1 - slippage))
 
-        # ✅ Try cached allowance logic first, then force approve if fails
         logging.info("Approving USDT for router (force refresh if needed)...")
         try:
             approve_if_needed(usdt, ROUTER_ADDR, OWNER, amt_in)
@@ -147,7 +133,6 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
             logging.warning(f"approve_if_needed() issue, retrying direct approve: {e}")
             approve_token_direct(usdt, ROUTER_ADDR, amt_in)
 
-        # ✅ Execute swap
         tx = router.functions.swapExactTokensForTokens(
             amt_in,
             out_min,
@@ -164,34 +149,23 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
         logging.info(f"✅ Swap USDT -> WMATIC sent successfully: {tx_hash}")
         time.sleep(5)
         return tx_hash
-
     except Exception as e:
         logging.error(f"swap_usdt_to_wmatic() failed: {e}")
         raise
 
 def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
-    """
-    Swap WMATIC -> USDT using QuickSwap (POL network).
-    Uses explicit approval refresh to avoid allowance sync issues.
-    """
+    """Swap WMATIC -> USDT with approval retry and gas bump."""
     try:
         dec_wmatic = get_token_decimals(wmatic)
         dec_usdt = get_token_decimals(usdt)
-
-        # Convert to wei (WMATIC = 18 decimals)
         amt_in = w3.to_wei(amount_in_wmatic, 'ether')
-
-        # Define swap path
         path = [WMATIC_ADDR, USDT_ADDR]
-
-        # Estimate expected output
         amounts = estimate_amounts_out(amt_in, path)
         if not amounts:
             raise RuntimeError("Failed to estimate amounts out.")
         out_est = amounts[-1]
         out_min = int(out_est * (1 - slippage))
 
-        # ✅ Explicit approval (ignore allowance cache)
         logging.info("Approving WMATIC for router (force refresh)...")
         try:
             approve_if_needed(wmatic, ROUTER_ADDR, OWNER, amt_in)
@@ -199,7 +173,6 @@ def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
             logging.warning(f"approve_if_needed() issue, retrying direct approve: {e}")
             approve_token_direct(wmatic, ROUTER_ADDR, amt_in)
 
-        # ✅ Execute swap using standard QuickSwap ABI
         tx = router.functions.swapExactTokensForTokens(
             amt_in,
             out_min,
@@ -216,7 +189,6 @@ def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
         logging.info(f"✅ Swap WMATIC -> USDT sent successfully: {tx_hash}")
         time.sleep(5)
         return tx_hash
-
     except Exception as e:
         logging.error(f"swap_wmatic_to_usdt() failed: {e}")
         raise

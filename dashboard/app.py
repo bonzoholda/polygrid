@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from main import bot_state  # import the global bot_state
 
 # Allow imports from project root
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -124,19 +125,14 @@ def logs(uid: int, request: Request):
 
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
+    """
+    SSE endpoint: send bot_state JSON every 5 seconds
+    """
     def event_generator():
         while True:
-            # Fetch real-time bot info here (replace with your own variables)
-            data = {
-                "usdt_balance": 5.6048,
-                "ai_signal": "SELL",
-                "confidence": 0.495,
-                "rsi": 33.71,
-                "momentum": -0.0222,
-                "log": "USDT balance: 5.604807"
-            }
-            yield f"data: {json.dumps(data)}\n\n"
-            time.sleep(1)  # send every 1 second
+            data_json = json.dumps(bot_state)
+            yield f"data: {data_json}\n\n"
+            time.sleep(5)  # 5-second interval
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

@@ -51,6 +51,27 @@ def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
 
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+
+@app.post("/register")
+def register(
+    request: Request,
+    username: str = Form(...),
+    name: str = Form(...),
+    address: str = Form(...),
+    private_key: str = Form(...),
+    password: str = Form(...),
+):
+    if get_user_by_username(username):
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Username already exists"})
+
+    add_user(username=username, password=password, name=name, address=address, private_key=private_key)
+    request.session["username"] = username
+    return RedirectResponse("/", status_code=303)
+
 # Bot actions
 @app.api_route("/start/{uid}", methods=["GET","POST"])
 def start(uid: int, request: Request):

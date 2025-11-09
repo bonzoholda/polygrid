@@ -1,68 +1,72 @@
-import sys, os, threading, logging
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi import FastAPI, Request, Form, Depends, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from manager import init_db, add_user, get_user_by_username, get_user, start_bot, stop_bot, tail_log, verify_user
+import threading, uuid
 
-# Import bot manager utilities
-from manager import init_db, add_user, get_users, start_bot, stop_bot, auto_resume, tail_log
-
-# ------------------------------
-# Paths & Initialization
-# ------------------------------
-BASE_DIR = os.path.dirname(__file__)
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-
-app = FastAPI(title="DEX Bot Dashboard")
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# Initialize database on startup
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 init_db()
 
-# ------------------------------
-# Startup hook: auto-resume bots
-# ------------------------------
-@app.on_event("startup")
-def startup_event():
-    logging.info("🚀 FastAPI app started. Resuming active bots...")
-    threading.Thread(target=auto_resume, daemon=True).start()
+sessions = {}  # session_id -> username
 
-# ------------------------------
-# Routes
-# ------------------------------
+# ---------- Helpers ----------
+def get_current_user(request: Request):
+    session_id = request.cookies.get("session_id")
+    if session_id and session_id in sessions:
+        return get_user_by_username(sessions[session_id])
+    return None
+
+# ---------- Login ----------
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.post("/login")
+def login(request: Request, response: Response, username: str = Form(...), password: str = Form(...)):
+    if verify_user(username, password):
+        session_id = str(uuid.uuid4())
+        sessions[session_id] = username
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(key="session_id", value=session_id)
+        return response
+    return RedirectResponse("/login", status_code=303)
+
+@app.get("/logout")
+def logout(request: Request, response: Response):
+    session_id = request.cookies.get("session_id")
+    if session_id in sessions:
+        sessions.pop(session_id)
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie("session_id")
+    return response
+
+# ---------- Dashboard ----------
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
-    users = get_users()
-    return templates.TemplateResponse("index.html", {"request": request, "users": users})
+def dashboard(request: Request, user=Depends(get_current_user)):
+    if not user:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("index.html", {"request": request, "user": user})
 
-
-@app.post("/register")
-def register(name: str = Form(...), address: str = Form(...), private_key: str = Form(...)):
-    add_user(name, address, private_key)
+@app.get("/start")
+def start(user=Depends(get_current_user)):
+    if not user:
+        return RedirectResponse("/login")
+    start_bot(user["id"])
     return RedirectResponse("/", status_code=303)
 
-
-@app.get("/start/{uid}")
-def start(uid: int):
-    start_bot(uid)
+@app.get("/stop")
+def stop(user=Depends(get_current_user)):
+    if not user:
+        return RedirectResponse("/login")
+    stop_bot(user["id"])
     return RedirectResponse("/", status_code=303)
 
-
-@app.get("/stop/{uid}")
-def stop(uid: int):
-    stop_bot(uid)
-    return RedirectResponse("/", status_code=303)
-
-
-@app.get("/logs/{uid}")
-def get_logs(uid: int):
-    logs = tail_log(uid)
-    return PlainTextResponse("".join(logs))
-
-
-@app.get("/status")
-def get_status():
-    users = get_users()
-    return {"users": users}
+@app.get("/logs")
+def logs(user=Depends(get_current_user)):
+    if not user:
+        return RedirectResponse("/login")
+    logs = tail_log(user["id"])
+    return HTMLResponse("<pre>" + "".join(logs) + "</pre>")

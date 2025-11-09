@@ -19,6 +19,16 @@ from utils import (
 from ai_module import MLSignalGeneratorOKX
 from config import usdt, wmatic, OWNER, USDT_ADDR, WMATIC_ADDR
 
+# ---------- Real-time bot state for dashboard ----------
+bot_state = {
+    "usdt_balance": 0.0,
+    "ai_signal": "--",
+    "confidence": 0.0,
+    "rsi": 0.0,
+    "momentum": 0.0,
+    "log": ""
+}
+
 
 # ---------- Position class ----------
 class Position:
@@ -61,6 +71,19 @@ def main_loop(poll_interval=60):
                 logging.info(f"USDT balance: {usdt_balance_onchain:.6f}")
                 logging.info(f"🤖 AI module signal: {ai_signal}")
 
+                # ------- After fetching AI signal
+                bot_state["usdt_balance"] = usdt_balance_onchain
+                bot_state["ai_signal"] = ai_signal
+                # If you want, you can also store confidence, RSI, momentum from ml_signal
+                # Example (assuming ml_signal.generate_signal() returns them or you extract separately):
+                # bot_state["confidence"] = last_confidence
+                # bot_state["rsi"] = last_rsi
+                # bot_state["momentum"] = last_momentum
+                
+                bot_state["log"] = f"{time.strftime('%H:%M:%S')} | USDT balance: {usdt_balance_onchain:.6f} | AI signal: {ai_signal}"
+
+                
+                
                 if ai_signal == "BUY" and usdt_balance_onchain > 5:
                     lot_values = [1, 1, 2, 3]
                     lot_total_units = sum(lot_values)

@@ -1,108 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>DEX Bot Dashboard</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', sans-serif; background: #121212; color: #e0e0e0; line-height: 1.5; }
-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 2rem; background: #1f1f1f; position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
-header h1 { font-weight: 700; font-size: 1.5rem; color: #fff; }
-header a { color: #fff; text-decoration: none; padding: 0.5rem 1rem; background: #f44336; border-radius: 6px; transition: 0.3s; }
-header a:hover { background: #e53935; }
-.container { padding: 2rem; display: grid; grid-template-columns: 1fr; gap: 1.5rem; max-width: 1200px; margin: auto; }
-.card { background: #1e1e1e; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.2s; }
-.card:hover { transform: translateY(-3px); }
-.dashboard { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-.dashboard .card { text-align: center; }
-.dashboard .value { font-size: 1.5rem; font-weight: 700; margin-top: 0.5rem; color: #00ff99; }
-.dashboard .label { font-size: 0.85rem; color: #aaa; margin-top: 0.2rem; }
-.btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-right: 0.5rem; transition: 0.2s; }
-.btn.start { background: #4CAF50; color: #fff; }
-.btn.start:hover { background: #45a049; }
-.btn.stop { background: #f44336; color: #fff; }
-.btn.stop:hover { background: #e53935; }
-pre { background: #111; padding: 1rem; border-radius: 10px; max-height: 400px; overflow-y: scroll; color: #00ff99; font-family: 'Courier New', Courier, monospace; }
-@media (max-width: 1024px) { .dashboard { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .dashboard { grid-template-columns: 1fr; } }
-</style>
+    <meta charset="UTF-8">
+    <title>DEX Bot Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: #1e1e1e; }
+        header h1 { margin: 0; }
+        header a { color: #fff; text-decoration: none; padding: 0.5rem 1rem; background: #f44336; border-radius: 4px; }
+        .container { padding: 1rem; }
+        button { padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; margin: 0.1rem; }
+        .start { background: #4CAF50; color: #fff; }
+        .stop { background: #f44336; color: #fff; }
+        pre { background: #1e1e1e; padding: 1rem; border-radius: 8px; max-height: 400px; overflow-y: scroll; color: #0f0; }
+    </style>
 </head>
 <body>
-<header>
-<h1>DEX Bot Dashboard</h1>
-<a href="/logout">Logout</a>
-</header>
+    <header>
+        <h1>DEX Bot Dashboard</h1>
+        <a href="/logout">Logout</a>
+    </header>
 
-<div class="container">
-    <div class="card">
+    <div class="container">
         <h2>Welcome, {{ user['name'] }}</h2>
         <p><strong>Bot Name:</strong> {{ user['name'] }}</p>
         <p><strong>Wallet Address:</strong> {{ user['address'] }}</p>
         <p><strong>Status:</strong>
             {% if user['is_active'] %}
-                <span class="status running" style="color:#4CAF50">Running</span>
+                <span style="color:#4CAF50">Running</span>
             {% else %}
-                <span class="status stopped" style="color:#f44336">Stopped</span>
+                <span style="color:#f44336">Stopped</span>
             {% endif %}
         </p>
-        <div style="margin-top: 1rem;">
-            <form method="get" action="/start/{{ user['id'] }}" style="display:inline;">
-                <button type="submit" class="btn start">Start Bot</button>
-            </form>
-            <form method="get" action="/stop/{{ user['id'] }}" style="display:inline;">
-                <button type="submit" class="btn stop">Stop Bot</button>
-            </form>
-        </div>
-    </div>
 
-    <div class="dashboard">
-        <div class="card"><div class="label">USDT Balance</div><div class="value" id="balance">0.0000</div></div>
-        <div class="card"><div class="label">Last AI Signal</div><div class="value" id="signal">--</div></div>
-        <div class="card"><div class="label">Confidence</div><div class="value" id="confidence">0%</div></div>
-        <div class="card"><div class="label">RSI / Momentum</div><div class="value" id="rsi_momentum">--</div></div>
-    </div>
+        <form method="get" action="/start/{{ user['id'] }}" style="display:inline;">
+            <button type="submit" class="start">Start Bot</button>
+        </form>
+        <form method="get" action="/stop/{{ user['id'] }}" style="display:inline;">
+            <button type="submit" class="stop">Stop Bot</button>
+        </form>
 
-    <div class="card">
-        <h2>Bot Logs</h2>
+        <h3>Logs</h3>
         <pre id="log"></pre>
     </div>
-</div>
 
-<script>
-const logElement = document.getElementById("log");
-const balanceEl = document.getElementById("balance");
-const signalEl = document.getElementById("signal");
-const confEl = document.getElementById("confidence");
-const rmEl = document.getElementById("rsi_momentum");
+    <script>
+        const logElement = document.getElementById("log");
+        const uid = {{ user['id'] }};
+        const evtSource = new EventSource(`/stream_logs/${uid}`);
 
-const uid = {{ user['id'] }};
-const evtSource = new EventSource(`/stream_logs/${uid}`);
-
-evtSource.onmessage = function(e) {
-    try {
-        const data = JSON.parse(e.data);
-
-        // Update dashboard cards
-        balanceEl.textContent = data.usdt_balance ?? 0;
-        signalEl.textContent = data.ai_signal ?? "--";
-        confEl.textContent = (data.confidence ?? 0)*100 + "%";
-        rmEl.textContent = `RSI: ${data.rsi ?? 0}, M: ${data.momentum ?? 0}`;
-
-        // Display raw logs exactly
-        if (data.log !== undefined) {
-            logElement.textContent = data.log;
+        evtSource.onmessage = function(e) {
+            logElement.innerHTML += e.data + "\n";
             logElement.scrollTop = logElement.scrollHeight;
-        }
-    } catch(err) {
-        console.error("Error parsing SSE data:", err);
-    }
-};
+        };
 
-evtSource.onerror = function() {
-    console.error("SSE connection lost, retrying...");
-};
-</script>
+        evtSource.onerror = function() {
+            console.error("SSE connection lost, attempting to reconnect...");
+        };
+    </script>
 </body>
 </html>

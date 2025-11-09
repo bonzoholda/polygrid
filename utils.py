@@ -347,7 +347,7 @@ def approve_if_needed(token_contract, spender, owner_addr, amount):
     return True
 
 
-def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
+def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.02):
     """
     Swap exact USDT -> WMATIC using router.swapExactTokensForTokensSupportingFeeOnTransferTokens
     amount_in_usdt is float (human)
@@ -373,7 +373,7 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
     })
     tx_hash = send_tx(tx)
     logging.info(f"Swap USDT->WMATIC tx sent: {tx_hash}")
-    time.sleep(2)
+    time.sleep(5)
     return tx_hash
 
 
@@ -392,7 +392,7 @@ def approve_token_direct(token_contract, spender, amount):
     return tx_hash
 
 
-def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
+def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.02):
     """
     Swap WMATIC -> USDT using QuickSwap (POL network).
     """
@@ -425,7 +425,7 @@ def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
 
         tx_hash = send_tx(tx)
         logging.info(f"Swap WMATIC->USDT tx sent: {tx_hash}")
-        time.sleep(2)
+        time.sleep(5)
         return tx_hash
 
     except Exception as e:

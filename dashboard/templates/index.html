@@ -85,15 +85,14 @@ evtSource.onmessage = function(e) {
         const data = JSON.parse(e.data);
 
         // Update dashboard cards
-        if (data.usdt_balance !== undefined) balanceEl.textContent = parseFloat(data.usdt_balance).toFixed(4);
-        if (data.ai_signal !== undefined) signalEl.textContent = data.ai_signal;
-        if (data.confidence !== undefined) confEl.textContent = (data.confidence*100).toFixed(1) + "%";
-        if (data.rsi !== undefined && data.momentum !== undefined)
-            rmEl.textContent = `RSI: ${data.rsi.toFixed(2)}, M: ${data.momentum.toFixed(4)}`;
+        balanceEl.textContent = data.usdt_balance ?? 0;
+        signalEl.textContent = data.ai_signal ?? "--";
+        confEl.textContent = (data.confidence ?? 0)*100 + "%";
+        rmEl.textContent = `RSI: ${data.rsi ?? 0}, M: ${data.momentum ?? 0}`;
 
-        // Append new logs
-        if (data.log) {
-            logElement.innerHTML += data.log + "\n";
+        // Display raw logs exactly
+        if (data.log !== undefined) {
+            logElement.textContent = data.log;
             logElement.scrollTop = logElement.scrollHeight;
         }
     } catch(err) {

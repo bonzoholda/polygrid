@@ -39,44 +39,49 @@ class Position:
 # ---------- Aggressive AI BUY Signal ----------
 def ai_buy_signal():
     """
-    Generate an AI-based BUY signal with momentum + ML confidence logic.
+    Generate AI-based BUY signal using OKX candles + ML confidence + momentum logic.
     Returns: bool
     """
     try:
-        df = fetch_ohlcv(days=3, interval="hourly")
+        ai = MLSignalGeneratorOKX()
+        df = ai.fetch_ohlcv(symbol="POL-USDT", window="1h", limit=200)
         if df is None or df.empty:
-            logging.error("❌ No price data available. Cannot generate AI signal.")
+            logging.error("❌ No price data from OKX. Cannot generate AI signal.")
             return False
 
-        df = feature_engineer(df)
-        model = train_small_model(df)
-        if model is None:
-            logging.warning("⚠️ Not enough data for ML model; falling back to SMA logic.")
-            df["sma_fast"] = df["price"].rolling(5).mean()
-            df["sma_slow"] = df["price"].rolling(20).mean()
-            return df["sma_fast"].iloc[-1] > df["sma_slow"].iloc[-1]
+        # Add indicators & train the model
+        df = ai.add_indicators(df)
+        ai.train_model(df)
 
-        latest = df.iloc[-1][["ret1", "sma", "std", "momentum", "rsi"]].values.reshape(1, -1)
-        proba = model.predict_proba(latest)[0][1]
+        # Compute extra technicals for confidence and momentum
+        df["ret1"] = df["close"].pct_change()
+        df["momentum"] = df["close"] / df["close"].shift(4) - 1  # 4-hour momentum
+        df.dropna(inplace=True)
+
+        latest = df.iloc[-1][["sma_fast", "sma_slow", "rsi"]].values.reshape(1, -1)
+        proba = ai.model.predict_proba(latest)[0][1]
         confidence = round(proba, 3)
 
         momentum = df["momentum"].iloc[-1]
         rsi = df["rsi"].iloc[-1]
 
+        # Adaptive threshold logic (same as your original)
         base_threshold = 0.55
         momentum_boost = 0.1 if momentum > 0.002 else 0
         threshold = base_threshold - momentum_boost
 
+        # Final BUY condition
         signal = (confidence > threshold) and (momentum > 0) and (rsi < 70)
 
         logging.info(
-            f"🤖 AI Signal | Conf={confidence:.3f} | Thresh={threshold:.2f} | "
+            f"🤖 AI-OKX Signal | Conf={confidence:.3f} | Thresh={threshold:.2f} | "
             f"Momentum={momentum:.4f} | RSI={rsi:.2f} | Signal={signal}"
         )
+
         return signal
 
     except Exception as e:
-        logging.error(f"AI signal generation failed: {e}", exc_info=True)
+        logging.error(f"AI BUY signal generation failed: {e}", exc_info=True)
         return False
 
 

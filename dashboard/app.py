@@ -92,28 +92,24 @@ def stop(uid: int, request: Request):
 # SSE endpoint: live bot_state
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
-    """
-    Sends bot_state as SSE every second, including new logs
-    """
     def event_generator():
         last_index = 0
         while True:
-            logs = list(bot_state.get("logs", []))
+            # Ensure logs is a list of lines
+            logs = bot_state.get("logs", "")
+            if isinstance(logs, str):
+                logs = logs.splitlines()
             new_logs = logs[last_index:]
             last_index = len(logs)
 
-            # Compose data dictionary
-            data = {
-                "usdt_balance": bot_state.get("usdt_balance", 0),
-                "ai_signal": bot_state.get("ai_signal", "--"),
-                "confidence": bot_state.get("confidence", 0),
-                "rsi": bot_state.get("rsi", 0),
-                "momentum": bot_state.get("momentum", 0),
-                "log": "\n".join(bot_state.get("logs", []))  # merge logs into a single string
-            }
-
-
-            yield f"data: {json.dumps(data)}\n\n"
+            yield f"data: {json.dumps({ \
+                'usdt_balance': bot_state.get('usdt_balance', 0.0), \
+                'ai_signal': bot_state.get('ai_signal', '--'), \
+                'confidence': bot_state.get('confidence', 0.0), \
+                'rsi': bot_state.get('rsi', 0.0), \
+                'momentum': bot_state.get('momentum', 0.0), \
+                'log': "\n".join(new_logs) \
+            })}\n\n"
             time.sleep(1)
-
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+

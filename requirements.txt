@@ -10,5 +10,4 @@ fastapi
 uvicorn
 jinja2
 cryptography
-python-multipart
-sqlite3
+python-multipart==0.0.9

@@ -3,6 +3,6 @@ requests
 pandas
 scikit-learn
 python-dotenv
-setuptools
+setuptools<81
 numpy
 joblib

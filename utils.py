@@ -50,19 +50,28 @@ def get_onchain_token_balance(token_contract, wallet):
 
 # ---------- Price Fetching ----------
 
-def get_pol_price_from_okx(symbol="POL-USDT", window="1h", limit=50):
-    url = f"https://www.okx.com/api/v5/market/candles?instId={symbol}&bar={window}&limit={limit}"
+def get_pol_price_from_okx():
+    """
+    Fetch latest POL/USDT price directly from OKX public API.
+    Returns: float or None
+    """
     try:
-        r = requests.get(url, timeout=10)
+        url = "https://www.okx.com/api/v5/market/ticker"
+        params = {"instId": "POL-USDT"}
+        r = requests.get(url, params=params, timeout=10)
         r.raise_for_status()
-        candles = r.json().get("data", [])
-        if not candles:
-            logging.error("⚠️ No candle data returned from OKX.")
+        data = r.json()
+
+        if data.get("code") != "0" or not data.get("data"):
+            logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
             return None
-        close_prices = [float(c[4]) for c in candles]
-        return sum(close_prices) / len(close_prices)
+
+        price = float(data["data"][0]["last"])
+        logging.info(f"💰 Current POL price: {price:.6f} USDT")
+        return price
+
     except Exception as e:
-        logging.error(f"Failed fetching OKX price: {e}")
+        logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
         return None
 
 # ---------- Swapping & Approvals ----------

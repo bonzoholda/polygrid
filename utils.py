@@ -22,6 +22,9 @@ def send_tx(tx, retries=3, gas_bump=1.2):
         try:
             signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
             tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)  # wait 1 min
+            if receipt["status"] != 1:
+                raise RuntimeError(f"Swap tx failed on-chain: {tx_hash}")
             return w3.to_hex(tx_hash)
         except ValueError as e:
             msg = str(e)

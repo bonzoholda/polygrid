@@ -108,8 +108,9 @@ def stream_logs(uid: int):
                 "confidence": bot_state.get("confidence", 0),
                 "rsi": bot_state.get("rsi", 0),
                 "momentum": bot_state.get("momentum", 0),
-                "log": "\n".join(new_logs)  # single string for dashboard JS
+                "log": "\n".join(bot_state.get("logs", []))  # merge logs into a single string
             }
+
 
             yield f"data: {json.dumps(data)}\n\n"
             time.sleep(1)

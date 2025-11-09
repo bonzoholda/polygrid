@@ -12,36 +12,25 @@ def get_nonce():
     return w3.eth.get_transaction_count(OWNER, 'pending')
 
 def gas_params():
-    # Use dynamic gas price from network
-    return {
-        "gas": 250000,
-        "gasPrice": w3.eth.gas_price,
-        "chainId": 137,
-    }
+    g = w3.eth.gas_price
+    return {"gasPrice": g, "chainId": w3.eth.chain_id}
 
-def send_tx(tx, retries=3, gas_bump=1.2, timeout=180):
-    """Send transaction with retry and gas bump if underpriced or stuck."""
-    for attempt in range(retries):
-        try:
-            signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
-            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
-            if receipt["status"] != 1:
-                raise RuntimeError(f"Tx reverted on-chain: {tx_hash}")
-            return w3.to_hex(tx_hash)
-        except Web3.exceptions.TimeExhausted:
-            logging.warning(f"Tx {tx_hash.hex()} not mined in {timeout}s, retrying with higher gas...")
-            tx['gasPrice'] = int(tx['gasPrice'] * gas_bump)
-            time.sleep(3)
-        except ValueError as e:
-            msg = str(e)
-            if "replacement transaction underpriced" in msg or "already known" in msg:
-                tx['gasPrice'] = int(tx['gasPrice'] * gas_bump)
-                logging.warning(f"Tx underpriced, bumping gas and retrying... attempt {attempt+1}")
-                time.sleep(2)
-            else:
-                raise
-    raise RuntimeError("Failed to send tx after retries.")
+def send_tx(tx, wait=True):
+    signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
+    raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
+    if raw is None:
+        raise AttributeError("Web3 signed transaction missing raw transaction field.")
+
+    tx_hash = w3.eth.send_raw_transaction(raw)
+    logging.info(f"✅ Transaction sent: {tx_hash.hex()}")
+
+    if wait:
+        # Wait until mined, indefinitely
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt.status != 1:
+            raise RuntimeError(f"Tx reverted: {tx_hash.hex()}")
+        logging.info(f"🧾 Tx confirmed in block {receipt.blockNumber}")
+    return tx_hash.hex()
 
 def get_token_decimals(token_contract):
     return token_contract.functions.decimals().call()

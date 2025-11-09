@@ -43,7 +43,7 @@ def ai_buy_signal():
     Returns: bool
     """
     try:
-        df = fetch_price_history(days=3, interval="hourly")
+        df = fetch_ohlcv(days=3, interval="hourly")
         if df is None or df.empty:
             logging.error("❌ No price data available. Cannot generate AI signal.")
             return False

@@ -13,7 +13,7 @@ def get_nonce():
 def gas_params():
     return {
         "gas": 250000,
-        "gasPrice": w3.to_wei("40", "gwei"),
+        "gasPrice": w3.eth.gas_price,
         "chainId": 137,
     }
 

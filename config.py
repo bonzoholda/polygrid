@@ -32,26 +32,33 @@ ERC20_ABI = [
 
 ROUTER_ABI = [
     {
-        "name": "swapExactTokensForTokensSupportingFeeOnTransferTokens",
-        "type": "function",
-        "stateMutability": "nonpayable",
         "inputs": [
-            {"name": "amountIn", "type": "uint256"},
-            {"name": "amountOutMin", "type": "uint256"},
-            {"name": "path", "type": "address[]"},
-            {"name": "to", "type": "address"},
-            {"name": "deadline", "type": "uint256"},
+            {"internalType": "uint256","name":"amountIn","type":"uint256"},
+            {"internalType": "uint256","name":"amountOutMin","type":"uint256"},
+            {"internalType": "address[]","name":"path","type":"address[]"},
+            {"internalType": "address","name":"to","type":"address"},
+            {"internalType": "uint256","name":"deadline","type":"uint256"}
         ],
-        "outputs": [],
+        "name": "swapExactTokensForTokens",
+        "outputs": [
+            {"internalType": "uint256[]","name":"amounts","type":"uint256[]"}
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
     },
+    # You can also add getAmountsOut, approve, etc.
     {
-        "name": "getAmountsOut",
-        "type": "function",
-        "stateMutability": "view",
-        "inputs": [{"name": "amountIn", "type": "uint256"}, {"name": "path", "type": "address[]"}],
-        "outputs": [{"name": "amounts", "type": "uint256[]"}],
-    },
+        "inputs":[
+            {"internalType":"uint256","name":"amountIn","type":"uint256"},
+            {"internalType":"address[]","name":"path","type":"address[]"}
+        ],
+        "name":"getAmountsOut",
+        "outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],
+        "stateMutability":"view",
+        "type":"function"
+    }
 ]
+
 
 # ---------- Instantiate Contracts ----------
 usdt = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)

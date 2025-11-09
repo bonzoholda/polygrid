@@ -5,15 +5,105 @@
     <title>DEX Bot Dashboard</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 0; padding: 0; }
-        header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: #1e1e1e; }
-        header h1 { margin: 0; }
-        header a { color: #fff; text-decoration: none; padding: 0.5rem 1rem; background: #f44336; border-radius: 4px; }
-        .container { padding: 1rem; }
-        button { padding: 0.4rem 0.8rem; border: none; border-radius: 4px; cursor: pointer; margin: 0.1rem; }
-        .start { background: #4CAF50; color: #fff; }
-        .stop { background: #f44336; color: #fff; }
-        pre { background: #1e1e1e; padding: 1rem; border-radius: 8px; max-height: 400px; overflow-y: scroll; color: #0f0; }
+        /* ---------- Reset & Base ---------- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Exo', sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        a { text-decoration: none; color: inherit; }
+
+        /* ---------- Header ---------- */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: #161b22;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        }
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #58a6ff;
+        }
+        header a {
+            padding: 0.5rem 1rem;
+            background: #238636;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.2s ease;
+        }
+        header a:hover { background: #2ea043; }
+
+        /* ---------- Container ---------- */
+        .container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: #161b22;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        h2 {
+            font-size: 1.4rem;
+            color: #58a6ff;
+            margin-bottom: 1rem;
+        }
+        p {
+            margin-bottom: 0.8rem;
+        }
+        strong { color: #8b949e; }
+
+        /* ---------- Status ---------- */
+        .status {
+            font-weight: 600;
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+            color: #fff;
+        }
+        .status.running { background: #238636; }
+        .status.stopped { background: #bc4c4c; }
+
+        /* ---------- Buttons ---------- */
+        form { display: inline-block; margin-right: 0.5rem; }
+        button {
+            padding: 0.5rem 1.2rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+        button.start { background: #238636; color: #fff; }
+        button.start:hover { background: #2ea043; }
+        button.stop { background: #bc4c4c; color: #fff; }
+        button.stop:hover { background: #e55353; }
+
+        /* ---------- Logs ---------- */
+        h3 { margin-top: 2rem; margin-bottom: 0.5rem; color: #58a6ff; }
+        pre {
+            background: #0d1117;
+            padding: 1rem;
+            border-radius: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            color: #39d353;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.875rem;
+            line-height: 1.3;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+        }
+
+        /* ---------- Responsive ---------- */
+        @media(max-width: 600px) {
+            .container { padding: 1rem; margin: 1rem; }
+            header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+        }
     </style>
 </head>
 <body>
@@ -28,16 +118,16 @@
         <p><strong>Wallet Address:</strong> {{ user['address'] }}</p>
         <p><strong>Status:</strong>
             {% if user['is_active'] %}
-                <span style="color:#4CAF50">Running</span>
+                <span class="status running">Running</span>
             {% else %}
-                <span style="color:#f44336">Stopped</span>
+                <span class="status stopped">Stopped</span>
             {% endif %}
         </p>
 
-        <form method="get" action="/start/{{ user['id'] }}" style="display:inline;">
+        <form method="get" action="/start/{{ user['id'] }}">
             <button type="submit" class="start">Start Bot</button>
         </form>
-        <form method="get" action="/stop/{{ user['id'] }}" style="display:inline;">
+        <form method="get" action="/stop/{{ user['id'] }}">
             <button type="submit" class="stop">Stop Bot</button>
         </form>
 

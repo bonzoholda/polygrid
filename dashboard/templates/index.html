@@ -125,24 +125,15 @@
 
         evtSource.onmessage = function(e) {
             const data = JSON.parse(e.data);
-
-            // Update dashboard cards
-            if (data.usdt_balance !== undefined) balanceEl.textContent = parseFloat(data.usdt_balance).toFixed(4);
-            if (data.ai_signal !== undefined) signalEl.textContent = data.ai_signal || "--";
-            if (data.confidence !== undefined) confEl.textContent = (data.confidence*100).toFixed(1) + "%";
-            if (data.rsi !== undefined && data.momentum !== undefined)
-                rmEl.textContent = `RSI: ${data.rsi.toFixed(2)}, M: ${data.momentum.toFixed(4)}`;
-
-            // Append logs
-            if (data.log) {
-                const timestamp = data.timestamp || "";
-                logElement.innerHTML += `${timestamp} | ${data.log}\n`;
-                logElement.scrollTop = logElement.scrollHeight;
-            }
+            balanceEl.textContent = parseFloat(data.usdt_balance).toFixed(4);
+            signalEl.textContent = data.ai_signal;
+        
+            logEl.innerHTML = data.logs.join("\n");
+            logEl.scrollTop = logEl.scrollHeight;
         };
-
+        
         evtSource.onerror = function() {
-            console.error("SSE connection lost, attempting to reconnect...");
+            console.error("SSE lost, retrying...");
         };
     </script>
 </body>

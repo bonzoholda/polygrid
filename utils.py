@@ -29,7 +29,7 @@ def send_tx(tx, retries=3, gas_bump=1.2, timeout=180):
             if receipt["status"] != 1:
                 raise RuntimeError(f"Tx reverted on-chain: {tx_hash}")
             return w3.to_hex(tx_hash)
-        except web3.exceptions.TimeExhausted:
+        except Web3.exceptions.TimeExhausted:
             logging.warning(f"Tx {tx_hash.hex()} not mined in {timeout}s, retrying with higher gas...")
             tx['gasPrice'] = int(tx['gasPrice'] * gas_bump)
             time.sleep(3)

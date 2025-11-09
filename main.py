@@ -48,7 +48,7 @@ def main_loop(poll_interval=60):
     trail_active = False
     trail_peak = 0.0
     TRAIL_LOCK_STEP = 0.002  # 0.2% trailing gap
-    MIN_PROFIT_LOCK = 0.005  # trigger trailing after +0.5%
+    MIN_PROFIT_LOCK = 0.009  # trigger trailing after +0.9%
 
     while True:
         try:
@@ -115,7 +115,7 @@ def main_loop(poll_interval=60):
             # --- 4. DCA Logic (AI + Grid Combo) ---
             ai_signal = ml_signal.generate_signal()
             last_price = position.buy_prices[-1]
-            triggers = [-0.03, -0.10, -0.25]
+            triggers = [-0.03, -0.07, -0.15]
 
             for idx, trig in enumerate(triggers, start=1):
                 if len(position.amounts_wmatic) <= idx:

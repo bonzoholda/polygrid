@@ -68,7 +68,7 @@ def approve_if_needed(token_contract, spender, owner_addr, amount):
     })
     tx_hash = send_tx(tx)
     logging.info(f"Approve tx sent: {tx_hash}")
-    time.sleep(2)
+    time.sleep(5)
     return True
 
 def approve_token_direct(token_contract, spender, amount):
@@ -82,7 +82,7 @@ def approve_token_direct(token_contract, spender, amount):
     })
     tx_hash = send_tx(tx)
     logging.info(f"Direct approval tx sent: {tx_hash}")
-    time.sleep(2)
+    time.sleep(5)
     return tx_hash
 
 
@@ -140,7 +140,7 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
 
         tx_hash = send_tx(tx)
         logging.info(f"✅ Swap USDT -> WMATIC sent successfully: {tx_hash}")
-        time.sleep(2)
+        time.sleep(5)
         return tx_hash
 
     except Exception as e:
@@ -193,7 +193,7 @@ def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
 
         tx_hash = send_tx(tx)
         logging.info(f"✅ Swap WMATIC -> USDT sent successfully: {tx_hash}")
-        time.sleep(2)
+        time.sleep(5)
         return tx_hash
 
     except Exception as e:

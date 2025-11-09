@@ -11,3 +11,4 @@ uvicorn
 jinja2
 cryptography
 python-multipart==0.0.9
+itsdangerous

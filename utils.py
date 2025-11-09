@@ -8,7 +8,7 @@ from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, US
 # ---------- Helper Functions ----------
 
 def get_nonce():
-    return w3.eth.get_transaction_count(OWNER)
+    return w3.eth.get_transaction_count(OWNER, 'pending')  # track pending txs
 
 def gas_params():
     return {
@@ -17,10 +17,22 @@ def gas_params():
         "chainId": 137,
     }
 
-def send_tx(tx):
-    signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
-    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-    return w3.to_hex(tx_hash)
+def send_tx(tx, retries=3, gas_bump=1.2):
+    for attempt in range(retries):
+        try:
+            signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
+            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+            return w3.to_hex(tx_hash)
+        except ValueError as e:
+            msg = str(e)
+            if "replacement transaction underpriced" in msg or "already known" in msg:
+                # bump gas price
+                tx['gasPrice'] = int(tx['gasPrice'] * gas_bump)
+                logging.warning(f"Tx underpriced, bumping gas and retrying... attempt {attempt+1}")
+                time.sleep(2)
+            else:
+                raise
+    raise RuntimeError("Failed to send tx after retries.")
 
 def get_token_decimals(token_contract):
     return token_contract.functions.decimals().call()
@@ -85,8 +97,6 @@ def approve_token_direct(token_contract, spender, amount):
     time.sleep(5)
     return tx_hash
 
-
-
 def estimate_amounts_out(amount_in, path):
     try:
         return router.functions.getAmountsOut(amount_in, path).call()
@@ -146,7 +156,6 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
     except Exception as e:
         logging.error(f"swap_usdt_to_wmatic() failed: {e}")
         raise
-
 
 def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
     """

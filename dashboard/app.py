@@ -1,61 +1,87 @@
-import os, sys, threading, logging
-from fastapi import FastAPI, Request, Form, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
+import os, sys, hashlib, secrets, threading
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-from manager import start_bot, stop_bot, auto_resume, tail_log
-from db import init_db, add_user, get_users, get_user, set_active, decrypt_key
-from cryptography.fernet import Fernet
 
-# Allow imports from root project folder if needed
+# Allow imports from root
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
+from db import init_db, add_user, get_users, get_user, decrypt_key
+from manager import start_bot, stop_bot, auto_resume, tail_log
+
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_KEY", "change_this_secret"))
+app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "supersecret"))
+
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Initialize DB on startup
+# initialize database
 init_db()
-threading.Thread(target=auto_resume, daemon=True).start()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+# resume active bots on startup
+@app.on_event("startup")
+def startup_event():
+    threading.Thread(target=auto_resume, daemon=True).start()
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
+# -----------------
+# Auth utilities
+# -----------------
+def hash_password(password: str):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(password: str, hashed: str):
+    return hash_password(password) == hashed
+
+
 def get_current_user(request: Request):
-    uid = request.session.get("user_id")
-    if uid:
-        user = get_user(uid)
-        if user:
-            return user
+    username = request.session.get("username")
+    if not username:
+        return None
+    for u in get_users():
+        if u.get("username") == username:
+            return u
     return None
 
 
-def require_login(request: Request):
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-    return user
-
-
-# -----------------------------
+# -----------------
 # Routes
-# -----------------------------
+# -----------------
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    # Only show current user's bot
-    users = [user]
-    return templates.TemplateResponse("index.html", {"request": request, "users": users})
+    return templates.TemplateResponse("index.html", {"request": request, "user": user})
 
 
-# ----- Register -----
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.post("/login")
+def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    user = None
+    for u in get_users():
+        if u.get("username") == username:
+            user = u
+            break
+    if not user or not verify_password(password, user.get("password_hash", "")):
+        return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
+    request.session["username"] = username
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request):
     return templates.TemplateResponse("register.html", {"request": request})
@@ -67,76 +93,52 @@ def register(
     username: str = Form(...),
     name: str = Form(...),
     address: str = Form(...),
-    private_key: str = Form(...)
+    private_key: str = Form(...),
+    password: str = Form(...),
 ):
-    # Encrypt key with Fernet
-    add_user(name=name, address=address, private_key=private_key)
-    # Auto-login after registration
-    user = get_users()[-1]  # last added user
-    request.session["user_id"] = user["id"]
+    # store user with hashed password & encrypted key
+    password_hash = hash_password(password)
+    add_user(name=name, address=address, private_key=private_key)  # encrypted in db.py
+    # manually add username & password_hash in db (for auth)
+    conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), "data", "bots.db"))
+    conn.execute("ALTER TABLE IF NOT EXISTS bots ADD COLUMN username TEXT")
+    conn.execute("ALTER TABLE IF NOT EXISTS bots ADD COLUMN password_hash TEXT")
+    conn.execute(
+        "UPDATE bots SET username=?, password_hash=? WHERE name=? AND address=?",
+        (username, password_hash, name, address),
+    )
+    conn.commit()
+    conn.close()
+    request.session["username"] = username
     return RedirectResponse("/", status_code=303)
 
 
-# ----- Login -----
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-
-
-@app.post("/login")
-def login(request: Request, username: str = Form(...), private_key: str = Form(...)):
-    # Find user by username (or bot name) and check private key
-    users = get_users()
-    for u in users:
-        try:
-            dec_key = decrypt_key(u["encrypted_key"])
-        except Exception:
-            continue
-        if u["name"] == username and dec_key == private_key:
-            request.session["user_id"] = u["id"]
-            return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
-
-
-# ----- Logout -----
-@app.get("/logout")
-def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
-
-
-# ----- Bot control -----
-@app.get("/start/{uid}")
-def start(uid: int, request: Request):
-    user = get_current_user(request)
-    if not user or user["id"] != uid:
-        return PlainTextResponse("Unauthorized", status_code=403)
-    start_bot(uid)
-    return RedirectResponse("/", status_code=303)
-
-
-@app.get("/stop/{uid}")
-def stop(uid: int, request: Request):
-    user = get_current_user(request)
-    if not user or user["id"] != uid:
-        return PlainTextResponse("Unauthorized", status_code=403)
-    stop_bot(uid)
-    return RedirectResponse("/", status_code=303)
-
-
-@app.get("/logs/{uid}")
-def logs(uid: int, request: Request):
-    user = get_current_user(request)
-    if not user or user["id"] != uid:
-        return PlainTextResponse("Unauthorized", status_code=403)
-    logs = tail_log(uid)
-    return PlainTextResponse("".join(logs))
-
-
-# ----- Status API -----
-@app.get("/status")
-def status(request: Request):
+# -----------------
+# Bot actions
+# -----------------
+@app.get("/start")
+def start(request: Request):
     user = get_current_user(request)
     if not user:
-        return PlainTextResponse("Unauthorized", status_code=403)
-    return {"user": user}
+        return RedirectResponse("/login", status_code=303)
+    start_bot(user["id"])
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/stop")
+def stop(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    stop_bot(user["id"])
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/logs", response_class=HTMLResponse)
+def logs(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    log_lines = tail_log(user["id"])
+    return HTMLResponse("<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
+                        + "".join(log_lines) + "</pre>")

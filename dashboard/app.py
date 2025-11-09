@@ -4,11 +4,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-from main import bot_state  # import the global bot_state
+
 
 # Allow imports from project root
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
+from main import bot_state  # import the global bot_state
 from manager import (
     init_db, add_user, get_users, get_user, get_user_by_username,
     verify_user, decrypt_key, start_bot, stop_bot, auto_resume, tail_log, LOG_DIR

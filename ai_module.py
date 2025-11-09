@@ -104,35 +104,37 @@ class MLSignalGeneratorOKX:
         if df is None or df.empty:
             logging.error("❌ No price data from OKX. Cannot generate AI signal.")
             return None
-
+    
         df = self.add_indicators(df)
-
+    
         # Retrain every 6 hours (optimum for hourly data)
         if (not self.trained) or (
             self.last_train_time is None
             or datetime.now() - self.last_train_time > timedelta(hours=6)
         ):
             self.train_model(df)
-
-        latest = df[["sma_fast", "sma_slow", "rsi", "momentum", "volatility"]].iloc[-1:].values
-        proba = self.model.predict_proba(latest)[0][1]
+    
+        # Use a DataFrame with same columns as training features
+        latest_features = df[["sma_fast", "sma_slow", "rsi", "momentum", "volatility"]].iloc[-1:]
+        proba = self.model.predict_proba(latest_features)[0][1]  # no .values here
         confidence = round(proba, 3)
-
+    
         momentum = df["momentum"].iloc[-1]
         rsi = df["rsi"].iloc[-1]
-
+    
         # Dynamic confidence threshold (higher when RSI is hot)
         base_threshold = 0.55
         if rsi > 65:
             base_threshold += 0.05
         elif rsi < 35:
             base_threshold -= 0.05
-
+    
         signal = (confidence > base_threshold) and (momentum > 0) and (rsi < 70)
-
+    
         logging.info(
             f"🤖 AI Predictive Signal | Conf={confidence:.3f} | Thresh={base_threshold:.2f} | "
             f"Momentum={momentum:.4f} | RSI={rsi:.2f} | Signal={signal}"
         )
-
+    
         return "BUY" if signal else "SELL"
+

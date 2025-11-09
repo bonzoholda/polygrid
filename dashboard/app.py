@@ -1,4 +1,4 @@
-import os, sys, hashlib, secrets, threading
+import os, sys, hashlib, secrets, threading, sqlite3
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -8,7 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 # Allow imports from root
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from manager import init_db, add_user, get_users, get_user, decrypt_key
+from manager import init_db, add_user, get_users, get_user, encrypt_key
 from manager import start_bot, stop_bot, auto_resume, tail_log
 
 app = FastAPI()
@@ -17,10 +17,10 @@ app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET"
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# initialize database
+# Initialize database
 init_db()
 
-# resume active bots on startup
+# Resume active bots on startup
 @app.on_event("startup")
 def startup_event():
     threading.Thread(target=auto_resume, daemon=True).start()
@@ -65,11 +65,7 @@ def login_page(request: Request):
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    user = None
-    for u in get_users():
-        if u.get("username") == username:
-            user = u
-            break
+    user = get_user(username)
     if not user or not verify_password(password, user.get("password_hash", "")):
         return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
     request.session["username"] = username
@@ -96,19 +92,26 @@ def register(
     private_key: str = Form(...),
     password: str = Form(...),
 ):
-    # store user with hashed password & encrypted key
+    # Check if username already exists
+    if get_user(username):
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Username already exists"})
+
+    # Hash the password
     password_hash = hash_password(password)
-    add_user(name=name, address=address, private_key=private_key)  # encrypted in db.py
-    # manually add username & password_hash in db (for auth)
-    conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), "data", "bots.db"))
-    conn.execute("ALTER TABLE IF NOT EXISTS bots ADD COLUMN username TEXT")
-    conn.execute("ALTER TABLE IF NOT EXISTS bots ADD COLUMN password_hash TEXT")
-    conn.execute(
-        "UPDATE bots SET username=?, password_hash=? WHERE name=? AND address=?",
-        (username, password_hash, name, address),
+
+    # Encrypt the private key
+    encrypted_key = encrypt_key(private_key)
+
+    # Add user to DB
+    add_user(
+        username=username,
+        name=name,
+        address=address,
+        password_hash=password_hash,
+        private_key=encrypted_key,
     )
-    conn.commit()
-    conn.close()
+
+    # Log the user in
     request.session["username"] = username
     return RedirectResponse("/", status_code=303)
 
@@ -140,5 +143,8 @@ def logs(request: Request):
     if not user:
         return RedirectResponse("/login", status_code=303)
     log_lines = tail_log(user["id"])
-    return HTMLResponse("<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
-                        + "".join(log_lines) + "</pre>")
+    return HTMLResponse(
+        "<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
+        + "".join(log_lines)
+        + "</pre>"
+    )

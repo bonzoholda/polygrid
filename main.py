@@ -10,7 +10,7 @@ from utils import (
     get_pol_price_from_okx,
     get_onchain_token_balance,
     swap_usdt_to_wmatic,
-    swap_wmatic_to_usdt,   
+    swap_wmatic_to_usdt,
     get_token_decimals,
     estimate_amounts_out,
     to_decimals,
@@ -36,53 +36,8 @@ class Position:
         return ((current_price - avg_cost) / avg_cost) * 100
 
 
-# ---------- Aggressive AI BUY Signal ----------
-def ai_buy_signal():
-    """
-    Generate AI-based BUY signal using OKX candles + ML confidence + momentum logic.
-    Returns: bool
-    """
-    try:
-        ai = MLSignalGeneratorOKX()
-        df = ai.fetch_ohlcv(symbol="POL-USDT", window="1h", limit=200)
-        if df is None or df.empty:
-            logging.error("❌ No price data from OKX. Cannot generate AI signal.")
-            return False
-
-        # Add indicators & train the model
-        df = ai.add_indicators(df)
-        ai.train_model(df)
-
-        # Compute extra technicals for confidence and momentum
-        df["ret1"] = df["close"].pct_change()
-        df["momentum"] = df["close"] / df["close"].shift(4) - 1  # 4-hour momentum
-        df.dropna(inplace=True)
-
-        latest = df.iloc[-1][["sma_fast", "sma_slow", "rsi"]].values.reshape(1, -1)
-        proba = ai.model.predict_proba(latest)[0][1]
-        confidence = round(proba, 3)
-
-        momentum = df["momentum"].iloc[-1]
-        rsi = df["rsi"].iloc[-1]
-
-        # Adaptive threshold logic (same as your original)
-        base_threshold = 0.55
-        momentum_boost = 0.1 if momentum > 0.002 else 0
-        threshold = base_threshold - momentum_boost
-
-        # Final BUY condition
-        signal = (confidence > threshold) and (momentum > 0) and (rsi < 70)
-
-        logging.info(
-            f"🤖 AI-OKX Signal | Conf={confidence:.3f} | Thresh={threshold:.2f} | "
-            f"Momentum={momentum:.4f} | RSI={rsi:.2f} | Signal={signal}"
-        )
-
-        return signal
-
-    except Exception as e:
-        logging.error(f"AI BUY signal generation failed: {e}", exc_info=True)
-        return False
+# ---------- Initialize AI module ----------
+ml_signal = MLSignalGeneratorOKX()
 
 
 # ---------- Main bot behavior ----------
@@ -100,11 +55,13 @@ def main_loop(poll_interval=60):
             # --- 1. Entry section ---
             if not in_position:
                 logging.info("Checking AI BUY signal ...")
-                buy_signal = ai_buy_signal()
+                ai_signal = ml_signal.generate_signal()
+
                 usdt_balance_onchain = get_onchain_token_balance(usdt, OWNER)
                 logging.info(f"USDT balance: {usdt_balance_onchain:.6f}")
+                logging.info(f"🤖 AI module signal: {ai_signal}")
 
-                if buy_signal and usdt_balance_onchain > 5:
+                if ai_signal == "BUY" and usdt_balance_onchain > 5:
                     lot_values = [1, 1, 2, 3]
                     lot_total_units = sum(lot_values)
                     lot_size = usdt_balance_onchain / lot_total_units
@@ -156,14 +113,14 @@ def main_loop(poll_interval=60):
                     continue
 
             # --- 4. DCA Logic (AI + Grid Combo) ---
-            buy_signal = ai_buy_signal()
+            ai_signal = ml_signal.generate_signal()
             last_price = position.buy_prices[-1]
             triggers = [-0.03, -0.10, -0.25]
 
             for idx, trig in enumerate(triggers, start=1):
                 if len(position.amounts_wmatic) <= idx:
                     target_price = last_price * (1 + trig)
-                    if price <= target_price or (buy_signal and drawdown_pct <= -3):
+                    if price <= target_price or (ai_signal == "BUY" and drawdown_pct <= -3):
                         lot_to_buy = position.lots_alloc[idx]
                         amount_usdt = lot_to_buy * position.lot_size_usdt
                         logging.info(f"🟡 DCA Trigger idx={idx}: buying {lot_to_buy} lots ({amount_usdt:.2f} USDT)")

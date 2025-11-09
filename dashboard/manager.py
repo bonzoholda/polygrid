@@ -3,8 +3,13 @@ import subprocess, signal, sqlite3, time, logging, os, sys
 # Allow imports from root project folder
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-DB_FILE = os.path.join(os.path.dirname(__file__), "bots.db")
-LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
+DB_FILE = os.path.join(os.path.dirname(__file__), "data", "bots.db")
+LOG_DIR = os.path.join(os.path.dirname(__file__), "data", "logs")
+
+# ensure directories exist
+os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
@@ -86,15 +91,15 @@ def start_bot(uid):
     env["OWNER_ADDR"] = user["address"]
     env["PRIVATE_KEY"] = user["private_key"]
 
-    with open(log_file, "a") as f:
-        f.write(f"\n=== Starting bot for {user['name']} ===\n")
+    # Open the log file once
+    log_handle = open(log_file, "a")
+    log_handle.write(f"\n=== Starting bot for {user['name']} ===\n")
 
-    # Start bot process in root folder
     proc = subprocess.Popen(
         ["python", bot_path],
         cwd=project_root,
         env=env,
-        stdout=open(log_file, "a"),
+        stdout=log_handle,
         stderr=subprocess.STDOUT,
     )
 

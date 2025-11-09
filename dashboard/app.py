@@ -5,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-
 # Allow imports from project root
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -87,7 +86,6 @@ def register(
     if get_user_by_username(username):
         return templates.TemplateResponse("register.html", {"request": request, "error": "Username already exists"})
 
-    # Add user properly according to manager.py
     add_user(username=username, password=password, name=name, address=address, private_key=private_key)
     request.session["username"] = username
     return RedirectResponse("/", status_code=303)
@@ -120,36 +118,31 @@ def logs(uid: int, request: Request):
     if not user or user["id"] != uid:
         return RedirectResponse("/login", status_code=303)
     log_lines = tail_log(uid)
-    return HTMLResponse("<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
-                        + "".join(log_lines) + "</pre>")
+    return HTMLResponse(
+        "<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
+        + "".join(log_lines) + "</pre>"
+    )
 
 
+# -----------------
+# Live bot_state streaming for dashboard
+# -----------------
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
     """
-    SSE endpoint: send bot_state JSON every 5 seconds
+    SSE endpoint: send bot_state JSON every 1 second
     """
     def event_generator():
         while True:
-            data_json = json.dumps(bot_state)
-            yield f"data: {data_json}\n\n"
-            time.sleep(5)  # 5-second interval
+            try:
+                # Always include timestamp for live logging
+                bot_state_copy = bot_state.copy()
+                bot_state_copy["timestamp"] = time.strftime("%H:%M:%S")
+                data_json = json.dumps(bot_state_copy)
+                yield f"data: {data_json}\n\n"
+                time.sleep(1)  # 1-second interval for smoother live updates
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                time.sleep(1)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-#@app.get("/stream_logs/{uid}")
-#def stream_logs(uid: int):
-#    def log_generator():
-#        path = os.path.join(LOG_DIR, f"user_{uid}.log")
-#        if not os.path.exists(path):
-#            open(path, "w").close()  # create empty log
-#        with open(path, "r") as f:
-#            f.seek(0, os.SEEK_END)  # go to end of file
-#            while True:
-#                line = f.readline()
-#                if line:
-#                    yield f"data: {line.rstrip()}\n\n"
-#                else:
-#                    time.sleep(0.5)
-#
-#    return StreamingResponse(log_generator(), media_type="text/event-stream")

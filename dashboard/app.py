@@ -8,7 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 # Allow imports from root
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from db import init_db, add_user, get_users, get_user, decrypt_key
+from manager import init_db, add_user, get_users, get_user, decrypt_key
 from manager import start_bot, stop_bot, auto_resume, tail_log
 
 app = FastAPI()

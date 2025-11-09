@@ -90,7 +90,7 @@
         <div class="dashboard">
             <div class="card">
                 <div class="label">USDT Balance</div>
-                <div class="value" id="balance">0.00</div>
+                <div class="value" id="balance">0.0000</div>
             </div>
             <div class="card">
                 <div class="label">Last AI Signal</div>
@@ -128,14 +128,15 @@
 
             // Update dashboard cards
             if (data.usdt_balance !== undefined) balanceEl.textContent = parseFloat(data.usdt_balance).toFixed(4);
-            if (data.ai_signal !== undefined) signalEl.textContent = data.ai_signal;
+            if (data.ai_signal !== undefined) signalEl.textContent = data.ai_signal || "--";
             if (data.confidence !== undefined) confEl.textContent = (data.confidence*100).toFixed(1) + "%";
             if (data.rsi !== undefined && data.momentum !== undefined)
                 rmEl.textContent = `RSI: ${data.rsi.toFixed(2)}, M: ${data.momentum.toFixed(4)}`;
 
             // Append logs
             if (data.log) {
-                logElement.innerHTML += data.log + "\n";
+                const timestamp = data.timestamp || "";
+                logElement.innerHTML += `${timestamp} | ${data.log}\n`;
                 logElement.scrollTop = logElement.scrollHeight;
             }
         };

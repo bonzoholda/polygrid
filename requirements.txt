@@ -6,3 +6,7 @@ python-dotenv
 setuptools<81
 numpy
 joblib
+fastapi
+uvicorn
+jinja2
+cryptography

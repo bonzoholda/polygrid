@@ -91,8 +91,17 @@ def stop(uid: int, request: Request):
 # SSE endpoint: send full bot_state every second
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
-    def event_generator():
-        while True:
-            yield f"data: {json.dumps(bot_state)}\n\n"
-            time.sleep(5)
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    def log_generator():
+        path = os.path.join(LOG_DIR, f"user_{uid}.log")
+        if not os.path.exists(path):
+            open(path, "w").close()  # create empty log
+        with open(path, "r") as f:
+            f.seek(0, os.SEEK_END)  # go to end of file
+            while True:
+                line = f.readline()
+                if line:
+                    yield f"data: {line.rstrip()}\n\n"
+                else:
+                    time.sleep(0.5)
+
+    return StreamingResponse(log_generator(), media_type="text/event-stream")

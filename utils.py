@@ -12,7 +12,7 @@ def get_nonce():
     return w3.eth.get_transaction_count(OWNER, 'pending')
 
 def gas_params():
-    g = w3.eth.gas_price
+    g = w3.eth.gas_price * 1.2
     return {"gasPrice": g, "chainId": w3.eth.chain_id}
 
 def send_tx(tx, wait=True):
@@ -102,7 +102,7 @@ def estimate_amounts_out(amount_in, path):
         logging.error(f"estimate_amounts_out() failed: {e}")
         return None
 
-def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
+def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.02):
     """Swap exact USDT -> WMATIC with approval retry and gas bump."""
     try:
         dec_usdt = get_token_decimals(usdt)
@@ -142,7 +142,7 @@ def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.015):
         logging.error(f"swap_usdt_to_wmatic() failed: {e}")
         raise
 
-def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.015):
+def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.02):
     """Swap WMATIC -> USDT with approval retry and gas bump."""
     try:
         dec_wmatic = get_token_decimals(wmatic)

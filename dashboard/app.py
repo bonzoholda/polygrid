@@ -112,14 +112,12 @@ def stop(uid: int, request: Request):
     return RedirectResponse("/", status_code=303)
 
 
-
-@app.get("/logs", response_class=HTMLResponse)
-def logs(request: Request):
+@app.get("/logs/{uid}", response_class=HTMLResponse)
+def logs(uid: int, request: Request):
     user = get_current_user(request)
-    if not user:
+    if not user or user["id"] != uid:
         return RedirectResponse("/login", status_code=303)
-    log_lines = tail_log(user["id"])
-    return HTMLResponse(
-        "<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
-        + "".join(log_lines) + "</pre>"
-    )
+    log_lines = tail_log(uid)
+    return HTMLResponse("<pre style='color:#0f0; background:#1e1e1e; padding:1rem; border-radius:8px;'>"
+                        + "".join(log_lines) + "</pre>")
+

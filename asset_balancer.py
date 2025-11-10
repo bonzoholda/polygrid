@@ -3,6 +3,9 @@ import logging
 from config import usdt, wmatic, OWNER, USDT_ADDR, WMATIC_ADDR
 from utils import get_onchain_token_balance, get_pol_price_from_okx, swap_usdt_to_wmatic, swap_wmatic_to_usdt
 
+# Ensure logging works even when launched by FastAPI
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+
 TARGET_RATIO = 0.5      # 50% USDT / 50% WMATIC
 THRESHOLD = 0.10        # Trigger rebalance if one side deviates >10%
 TRADE_PORTION = 0.5     # Trade only 50% of the deviation
@@ -20,6 +23,10 @@ def get_portfolio_value():
 
 def rebalance_once():
     usdt_bal, wmatic_bal, wmatic_val, total, price = get_portfolio_value()
+    if total == 0:
+        logging.warning("⚠️ Portfolio total is zero or invalid, skipping rebalance.")
+        return False
+    
     target_val = total * TARGET_RATIO
     delta = wmatic_val - target_val
 

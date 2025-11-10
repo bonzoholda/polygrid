@@ -108,9 +108,18 @@ def stream_logs(uid: int):
 
 # --- portfolio tracking
 @app.get("/api/portfolio")
-def get_portfolio():
+def get_portfolio(request: Request):
     """
-    Return live portfolio data for dashboard metrics.
+    Return live portfolio data for the currently logged-in user.
     """
-    data = fetch_portfolio()
-    return data
+    user = get_current_user(request)
+    if not user:
+        return {"error": "Unauthorized"}
+
+    uid = user["id"]
+    try:
+        data = fetch_portfolio(uid)
+        return data
+    except Exception as e:
+        return {"error": str(e)}
+

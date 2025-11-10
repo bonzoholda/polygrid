@@ -7,6 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from manager import init_db, get_user_by_username, verify_user, add_user, start_bot, stop_bot, auto_resume, LOG_DIR
+from core.portfolio import fetch_portfolio
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET","supersecret"))
@@ -104,3 +105,12 @@ def stream_logs(uid: int):
                     time.sleep(0.5)
 
     return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+# --- portfolio tracking
+@app.get("/api/portfolio")
+def get_portfolio():
+    """
+    Return live portfolio data for dashboard metrics.
+    """
+    data = fetch_portfolio()
+    return data

@@ -2,7 +2,7 @@
 
 import logging
 from config import w3, router, usdt, wmatic
-from manager import get_user_by_id  # 👈 to access wallet address and keys per user
+from dashboard.manager import get_user  # 👈 to access wallet address and keys per user
 
 
 def fetch_portfolio(uid: int):
@@ -14,7 +14,7 @@ def fetch_portfolio(uid: int):
     """
     try:
         # --- Get user info from DB
-        user = get_user_by_id(uid)
+        user = get_user(uid)
         if not user:
             return {"error": f"User with id {uid} not found"}
 

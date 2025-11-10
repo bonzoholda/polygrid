@@ -22,6 +22,7 @@ fernet = Fernet(open(KEY_FILE, "rb").read())
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 processes = {}  # user_id -> subprocess.Popen
 
+
 # ------------------------------
 # Database utilities
 # ------------------------------
@@ -44,6 +45,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def add_user(username, password, name, address, private_key):
     password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     encrypted_key = fernet.encrypt(private_key.encode()).decode()
@@ -55,12 +57,14 @@ def add_user(username, password, name, address, private_key):
     conn.commit()
     conn.close()
 
+
 def get_user_by_username(username):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     row = conn.execute("SELECT * FROM bots WHERE username=?", (username,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
 
 def get_user(uid):
     conn = sqlite3.connect(DB_FILE)
@@ -69,14 +73,17 @@ def get_user(uid):
     conn.close()
     return dict(row) if row else None
 
+
 def verify_user(username, password):
     user = get_user_by_username(username)
     if not user:
         return False
     return bcrypt.checkpw(password.encode(), user["password_hash"].encode())
 
+
 def decrypt_key(enc_key):
     return fernet.decrypt(enc_key.encode()).decode()
+
 
 def set_active(uid, active):
     conn = sqlite3.connect(DB_FILE)
@@ -84,19 +91,22 @@ def set_active(uid, active):
     conn.commit()
     conn.close()
 
+
 def update_strategy(uid, strategy):
     conn = sqlite3.connect(DB_FILE)
     conn.execute("UPDATE bots SET strategy=? WHERE id=?", (strategy, uid))
     conn.commit()
     conn.close()
 
+
 def tail_log(uid, n=50):
     path = os.path.join(LOG_DIR, f"user_{uid}.log")
     if not os.path.exists(path):
         return ["(no log yet)"]
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()
     return lines[-n:]
+
 
 def get_users():
     conn = sqlite3.connect(DB_FILE)
@@ -104,6 +114,7 @@ def get_users():
     rows = conn.execute("SELECT * FROM bots").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
 
 # ------------------------------
 # Bot process management
@@ -137,14 +148,16 @@ def start_bot(uid, strategy="grid_dca"):
     env["PRIVATE_KEY"] = decrypt_key(user["encrypted_key"])
     env["BOT_STRATEGY"] = strategy
 
-    log_handle = open(log_file, "a")
-    log_handle.write(f"\n=== Starting bot for {user['name']} (strategy: {strategy}) ===\n")
+    with open(log_file, "a", buffering=1, encoding="utf-8") as log_handle:
+        log_handle.write(f"\n=== Starting bot for {user['name']} (strategy: {strategy}) ===\n")
+        log_handle.flush()
 
+    # ⚡ Launch Python in unbuffered mode (-u)
     proc = subprocess.Popen(
-        ["python", bot_path],
+        [sys.executable, "-u", bot_path],
         cwd=project_root,
         env=env,
-        stdout=log_handle,
+        stdout=open(log_file, "a", buffering=1, encoding="utf-8"),
         stderr=subprocess.STDOUT,
     )
 
@@ -152,6 +165,7 @@ def start_bot(uid, strategy="grid_dca"):
     set_active(uid, True)
     logging.info(f"🚀 Started {strategy} bot {uid} ({user['name']}) [PID {proc.pid}]")
     return True
+
 
 def stop_bot(uid):
     proc = processes.get(uid)
@@ -166,6 +180,7 @@ def stop_bot(uid):
         return True
     set_active(uid, False)
     return False
+
 
 def auto_resume():
     users = get_users()

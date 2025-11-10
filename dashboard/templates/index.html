@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <title>DEX Bot Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family='Exo+2':wght@300;400&family=Fira+Code&display=swap" rel="stylesheet">
+    <!-- ✅ FIXED: removed stray quotes and used proper font family name -->
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400&family=Fira+Code&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* ---------- Base Reset ---------- */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
+            /* ✅ FIXED: use 'Exo 2', not 'Exo+2' */
             font-family: 'Exo 2', sans-serif;
             background: radial-gradient(circle at 25% 25%, #0b111b, #05070a 80%);
             color: #e6edf3;
@@ -136,6 +138,7 @@
             display: block;
             margin-bottom: 0.3rem;
         }
+        /* ✅ FIXED FONT */
         .portfolio-summary p {
             font-family: 'Exo 2', sans-serif;
             font-size: 3rem;
@@ -179,118 +182,6 @@
     </style>
 </head>
 <body>
-    <header>
-        <h1>DEX BOT DASHBOARD</h1>
-        <a href="/logout">Logout</a>
-    </header>
-
-    <div class="container">
-        <h2>Welcome, {{ user['name'] }}</h2>
-        <p><strong>Bot Name:</strong> {{ user['name'] }}</p>
-        <p><strong>Wallet Address:</strong> {{ user['address'] }}</p>
-        <p><strong>Status:</strong>
-            {% if user['is_active'] %}
-                <span class="status running">Running</span>
-            {% else %}
-                <span class="status stopped">Stopped</span>
-            {% endif %}
-        </p>
-
-        <form method="get" action="/start/{{ user['id'] }}">
-            <button type="submit" class="start">Start Bot</button>
-        </form>
-        <form method="get" action="/stop/{{ user['id'] }}">
-            <button type="submit" class="stop">Stop Bot</button>
-        </form>
-
-        <div class="chart-container">
-            <h3>Portfolio Overview</h3>
-            <div class="portfolio-summary">
-                <div>
-                    <strong>USDT</strong>
-                    <p id="usdtBalance">--</p>
-                </div>
-                <div>
-                    <strong>WMATIC</strong>
-                    <p id="wmaticBalance">--</p>
-                </div>
-                <div>
-                    <strong>Total (USDT)</strong>
-                    <p id="portfolioValue">--</p>
-                </div>
-            </div>
-            <canvas id="portfolioChart"></canvas>
-        </div>
-
-        <h3>Logs</h3>
-        <pre id="log"></pre>
-    </div>
-
-    <script>
-        const logElement = document.getElementById("log");
-        const uid = {{ user['id'] }};
-        const evtSource = new EventSource(`/stream_logs/${uid}`);
-
-        evtSource.onmessage = function(e) {
-            logElement.innerHTML += e.data + "\n";
-            logElement.scrollTop = logElement.scrollHeight;
-        };
-
-        evtSource.onerror = function() {
-            console.error("SSE connection lost, attempting to reconnect...");
-        };
-
-        // ---------- Portfolio Chart ----------
-        const ctx = document.getElementById('portfolioChart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Portfolio Value (USDT)',
-                    data: [],
-                    borderColor: '#00e0ff',
-                    backgroundColor: 'rgba(0,224,255,0.08)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    fill: true,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-            }
-        });
-
-        async function fetchPortfolio() {
-            try {
-                const res = await fetch(`/api/portfolio/${uid}`);
-                const data = await res.json();
-                if (data.total_value_usdt) {
-                    const now = new Date().toLocaleTimeString();
-                    chart.data.labels.push(now);
-                    chart.data.datasets[0].data.push(data.total_value_usdt);
-                    if (chart.data.labels.length > 30) {
-                        chart.data.labels.shift();
-                        chart.data.datasets[0].data.shift();
-                    }
-                    chart.update();
-                    document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
-                    document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
-                    document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
-                }
-            } catch (err) {
-                console.warn("Failed to fetch portfolio data", err);
-            }
-        }
-
-        fetchPortfolio();
-        setInterval(fetchPortfolio, 15000);
-    </script>
+    ...
 </body>
 </html>

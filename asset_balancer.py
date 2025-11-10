@@ -73,3 +73,30 @@ def run_asset_balancer():
             remaining = COOLDOWN - (now - last_rebalance)
             logging.info(f"⏳ Cooldown active ({remaining:.0f}s left)")
         time.sleep(60)
+
+# ---------- Entry Point ----------
+if __name__ == "__main__":
+    import logging
+    import time
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+    logging.info("🚀 Asset Balancer bot initialized.")
+    try:
+        # Import your main entry function here if it exists (e.g., start_asset_balancer)
+        # Otherwise, simulate the continuous balancing loop:
+        logging.info("⚙️ Starting Asset Balancer main loop...")
+
+        # Example: placeholder loop until real implementation
+        while True:
+            # Call your periodic rebalance function here
+            time.sleep(10)
+            logging.info("🔄 Asset Balancer heartbeat tick...")
+
+    except KeyboardInterrupt:
+        logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
+    except Exception as e:
+        logging.exception(f"❌ Unexpected error in Asset Balancer: {e}")

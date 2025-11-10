@@ -1,7 +1,7 @@
 import time
 import logging
 from config import OWNER, USDT_ADDR, WMATIC_ADDR
-from utils import get_token_balance, get_price_usdt, swap_usdt_to_wmatic, swap_wmatic_to_usdt
+from utils import get_token_balance, get_pol_price_from_okx, swap_usdt_to_wmatic, swap_wmatic_to_usdt
 
 TARGET_RATIO = 0.5      # 50% USDT / 50% WMATIC
 THRESHOLD = 0.10        # Trigger rebalance if one side deviates >10%
@@ -10,7 +10,7 @@ COOLDOWN = 60 * 30      # 30-minute minimum between rebalances
 
 def get_portfolio_value():
     """Return USDT balance, WMATIC balance, their USDT values, and total."""
-    price = get_price_usdt(WMATIC_ADDR)
+    price = get_pol_price_from_okx()
     usdt_bal = get_token_balance(USDT_ADDR, OWNER)
     wmatic_bal = get_token_balance(WMATIC_ADDR, OWNER)
     wmatic_val = wmatic_bal * price

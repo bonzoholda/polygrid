@@ -19,7 +19,7 @@ class MLSignalGeneratorOKX:
     # ============================================================
     # FETCH PRICE HISTORY (OKX)
     # ============================================================
-    def fetch_ohlcv(self, symbol="POL-USDT", days=3, interval="1H"):
+    def fetch_ohlcv(self, symbol="POL-USDT", days=3, interval="15m"):
         url = "https://www.okx.com/api/v5/market/candles"
         params = {"instId": symbol, "bar": interval, "limit": str(days * 24)}
 

@@ -184,7 +184,7 @@ def start_bot(strategy: str = "grid_dca"):
     def runner():
         if strategy == "grid_dca":
             grid_dca_loop(poll_interval=60)
-        elif strategy == "asset_balancer" and run_asset_balancer:
+        elif strategy == "asset_balancer":
             run_asset_balancer()
         else:
             logging.error("Asset Balancer module not found.")

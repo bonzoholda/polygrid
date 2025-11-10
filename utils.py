@@ -98,6 +98,19 @@ router = w3.eth.contract(address=ROUTER_ADDR, abi=ROUTER_ABI)
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
+# ---------- Token Balance Helper ----------
+def get_token_balance(token_contract, wallet_address):
+    """Return the token balance (converted from wei to float)."""
+    try:
+        decimals = token_contract.functions.decimals().call()
+        raw_balance = token_contract.functions.balanceOf(wallet_address).call()
+        return raw_balance / (10 ** decimals)
+    except Exception as e:
+        logging.warning(f"Failed to get balance for {token_contract.address[:6]}...: {e}")
+        return 0.0
+
+
+
 # ---------- Utility helpers ----------
 def to_decimals(amount: float, decimals: int) -> int:
     return int(Decimal(amount) * (10 ** decimals))

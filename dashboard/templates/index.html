@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>DEX Bot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@300;400&family=Fira+Code&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* ---------- Reset & Base ---------- */
+        /* ---------- Base Reset ---------- */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Fira code', Arial, sans-serif;
-            background: #0d1117;
-            color: #c9d1d9;
+            font-family: 'Orbitron', sans-serif;
+            background: radial-gradient(circle at 25% 25%, #0b111b, #05070a 80%);
+            color: #e6edf3;
             line-height: 1.6;
             min-height: 100vh;
+            overflow-x: hidden;
         }
         a { text-decoration: none; color: inherit; }
 
@@ -22,102 +23,164 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1rem 2rem;
-            background: #161b22;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            padding: 1.2rem 2rem;
+            background: rgba(22, 27, 34, 0.9);
+            box-shadow: 0 0 20px rgba(0, 224, 255, 0.05);
+            backdrop-filter: blur(6px);
+            border-bottom: 1px solid rgba(0, 224, 255, 0.08);
         }
         header h1 {
             font-size: 1.5rem;
-            font-weight: 600;
-            color: #58a6ff;
+            font-weight: 300;
+            letter-spacing: 2px;
+            color: #00e0ff;
+            text-shadow: 0 0 6px rgba(0, 224, 255, 0.4);
         }
         header a {
             padding: 0.5rem 1rem;
-            background: #238636;
-            border-radius: 6px;
-            font-weight: 500;
-            transition: background 0.2s ease;
+            background: transparent;
+            border: 1px solid rgba(0, 224, 255, 0.4);
+            border-radius: 8px;
+            font-weight: 300;
+            color: #00e0ff;
+            letter-spacing: 1px;
+            transition: 0.3s;
         }
-        header a:hover { background: #2ea043; }
+        header a:hover {
+            background: rgba(0, 224, 255, 0.1);
+            box-shadow: 0 0 6px rgba(0, 224, 255, 0.2);
+        }
 
         /* ---------- Container ---------- */
         .container {
             max-width: 900px;
-            margin: 2rem auto;
+            margin: 2.5rem auto;
             padding: 2rem;
-            background: #161b22;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            background: rgba(15, 18, 24, 0.85);
+            border-radius: 16px;
+            box-shadow: 0 0 25px rgba(0, 224, 255, 0.05);
+            border: 1px solid rgba(0, 224, 255, 0.08);
         }
         h2 {
-            font-size: 1.4rem;
-            color: #58a6ff;
-            margin-bottom: 1rem;
+            font-size: 1.3rem;
+            color: #00e0ff;
+            margin-bottom: 1.2rem;
+            font-weight: 300;
+            letter-spacing: 1px;
         }
-        p { margin-bottom: 0.8rem; }
-        strong { color: #8b949e; }
+        p { margin-bottom: 0.8rem; color: #b3b8c2; font-weight: 300; }
+        strong { color: #8b949e; font-weight: 300; }
 
         /* ---------- Status ---------- */
         .status {
-            font-weight: 600;
-            padding: 0.2rem 0.6rem;
-            border-radius: 6px;
+            font-weight: 300;
+            padding: 0.25rem 0.7rem;
+            border-radius: 8px;
             color: #fff;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
         }
-        .status.running { background: #238636; }
-        .status.stopped { background: #bc4c4c; }
+        .status.running { background: #00c38a; }
+        .status.stopped { background: #b54a4a; }
 
         /* ---------- Buttons ---------- */
         form { display: inline-block; margin-right: 0.5rem; }
         button {
             padding: 0.5rem 1.2rem;
-            border: none;
-            border-radius: 8px;
-            font-weight: 500;
+            border: 1px solid rgba(0, 224, 255, 0.3);
+            border-radius: 10px;
+            font-weight: 300;
+            color: #00e0ff;
+            background: transparent;
             cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+            letter-spacing: 1px;
+            box-shadow: 0 0 8px rgba(0, 224, 255, 0.05);
+            transition: all 0.3s ease;
         }
-        button.start { background: #238636; color: #fff; }
-        button.start:hover { background: #2ea043; }
-        button.stop { background: #bc4c4c; color: #fff; }
-        button.stop:hover { background: #e55353; }
+        button.start:hover {
+            background: rgba(0, 224, 255, 0.1);
+            box-shadow: 0 0 8px rgba(0, 224, 255, 0.3);
+        }
+        button.stop {
+            border-color: rgba(255, 80, 80, 0.3);
+            color: #ff7070;
+        }
+        button.stop:hover {
+            background: rgba(255, 80, 80, 0.08);
+            box-shadow: 0 0 8px rgba(255, 80, 80, 0.25);
+        }
 
         /* ---------- Chart ---------- */
         .chart-container {
             margin-top: 2rem;
-            background: #0d1117;
-            border-radius: 12px;
-            padding: 1rem;
-            box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+            background: rgba(9, 12, 18, 0.8);
+            border-radius: 14px;
+            padding: 1.2rem;
+            box-shadow: inset 0 0 12px rgba(0, 224, 255, 0.05);
         }
-        canvas { width: 100% !important; height: 280px !important; }
+        canvas {
+            width: 100% !important;
+            height: 280px !important;
+        }
+
+        /* ---------- Portfolio Numbers ---------- */
+        .portfolio-summary {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 1.2rem;
+            text-align: center;
+        }
+        .portfolio-summary strong {
+            color: #00e0ff;
+            font-weight: 300;
+            display: block;
+            margin-bottom: 0.3rem;
+        }
+        .portfolio-summary p {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            color: #e6edf3;
+            margin: 0;
+        }
 
         /* ---------- Logs ---------- */
-        h3 { margin-top: 2rem; margin-bottom: 0.5rem; color: #58a6ff; }
+        h3 {
+            margin-top: 2rem;
+            margin-bottom: 0.5rem;
+            color: #00e0ff;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
         pre {
-            background: #0d1117;
+            background: #000;
             padding: 1rem;
             border-radius: 12px;
             max-height: 400px;
             overflow-y: auto;
-            color: #39d353;
+            color: #00ff9d;
             font-family: 'Fira Code', monospace;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             line-height: 1.3;
-            box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+            box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.08);
+            border: 1px solid rgba(0, 255, 157, 0.1);
+        }
+        pre::-webkit-scrollbar { width: 6px; }
+        pre::-webkit-scrollbar-thumb {
+            background: rgba(0, 224, 255, 0.3);
+            border-radius: 10px;
         }
 
         /* ---------- Responsive ---------- */
         @media(max-width: 600px) {
             .container { padding: 1rem; margin: 1rem; }
             header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+            .portfolio-summary { flex-direction: column; gap: 0.5rem; }
         }
     </style>
 </head>
 <body>
     <header>
-        <h1>DEX Bot Dashboard</h1>
+        <h1>DEX BOT DASHBOARD</h1>
         <a href="/logout">Logout</a>
     </header>
 
@@ -140,10 +203,9 @@
             <button type="submit" class="stop">Stop Bot</button>
         </form>
 
-        <!-- ✅ Added portfolio summary display -->
         <div class="chart-container">
             <h3>Portfolio Overview</h3>
-            <div style="display:flex; justify-content:space-around; margin-bottom:1rem; text-align:center;">
+            <div class="portfolio-summary">
                 <div>
                     <strong>USDT</strong>
                     <p id="usdtBalance">--</p>
@@ -179,7 +241,6 @@
         };
 
         // ---------- Portfolio Chart ----------
-
         const ctx = document.getElementById('portfolioChart').getContext('2d');
         const chart = new Chart(ctx, {
             type: 'line',
@@ -188,8 +249,8 @@
                 datasets: [{
                     label: 'Portfolio Value (USDT)',
                     data: [],
-                    borderColor: '#58a6ff',
-                    backgroundColor: 'rgba(88,166,255,0.1)',
+                    borderColor: '#00e0ff',
+                    backgroundColor: 'rgba(0,224,255,0.08)',
                     borderWidth: 2,
                     tension: 0.3,
                     fill: true,
@@ -200,31 +261,25 @@
                 responsive: true,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
-                    y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
                 }
             }
         });
 
-        // ✅ Updated fetchPortfolio to work with new JSON format
         async function fetchPortfolio() {
             try {
                 const res = await fetch(`/api/portfolio/${uid}`);
                 const data = await res.json();
-
                 if (data.total_value_usdt) {
                     const now = new Date().toLocaleTimeString();
                     chart.data.labels.push(now);
                     chart.data.datasets[0].data.push(data.total_value_usdt);
-
                     if (chart.data.labels.length > 30) {
                         chart.data.labels.shift();
                         chart.data.datasets[0].data.shift();
                     }
-
                     chart.update();
-
-                    // update the text balances
                     document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
                     document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
                     document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
@@ -235,7 +290,7 @@
         }
 
         fetchPortfolio();
-        setInterval(fetchPortfolio, 15000); // refresh every 15s
+        setInterval(fetchPortfolio, 15000);
     </script>
 </body>
 </html>

@@ -6,28 +6,38 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from manager import init_db, get_user_by_username, verify_user, add_user, start_bot, stop_bot, auto_resume, LOG_DIR
+from manager import (
+    init_db,
+    get_user_by_username,
+    verify_user,
+    add_user,
+    start_bot,
+    stop_bot,
+    auto_resume,
+    LOG_DIR,
+)
 from core.portfolio import fetch_portfolio
 
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET","supersecret"))
+app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "supersecret"))
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Initialize DB and resume bots
+# ---------- Initialize DB and resume bots ----------
 init_db()
+
 @app.on_event("startup")
 def startup_event():
     threading.Thread(target=auto_resume, daemon=True).start()
 
-# Auth utils
+# ---------- Auth utilities ----------
 def get_current_user(request: Request):
     username = request.session.get("username")
     if not username:
         return None
     return get_user_by_username(username)
 
-# Routes
+# ---------- Routes ----------
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     user = get_current_user(request)
@@ -42,7 +52,7 @@ def login_page(request: Request):
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
     if not verify_user(username, password):
-        return templates.TemplateResponse("login.html", {"request": request, "error":"Invalid credentials"})
+        return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
     request.session["username"] = username
     return RedirectResponse("/", status_code=303)
 
@@ -66,21 +76,29 @@ def register(
 ):
     if get_user_by_username(username):
         return templates.TemplateResponse("register.html", {"request": request, "error": "Username already exists"})
-
     add_user(username=username, password=password, name=name, address=address, private_key=private_key)
     request.session["username"] = username
     return RedirectResponse("/", status_code=303)
 
-# Bot actions
-@app.api_route("/start/{uid}", methods=["GET","POST"])
-def start(uid: int, request: Request):
+# ---------- Bot control ----------
+@app.get("/start/{uid}", response_class=HTMLResponse)
+def choose_strategy_page(uid: int, request: Request):
+    """Show a simple page to choose between Grid DCA and Asset Balancer."""
     user = get_current_user(request)
     if not user or user["id"] != uid:
         return RedirectResponse("/login", status_code=303)
-    start_bot(uid)
+    return templates.TemplateResponse("choose_strategy.html", {"request": request, "user": user})
+
+@app.post("/start/{uid}")
+def start(uid: int, request: Request, strategy: str = Form("grid_dca")):
+    """Start the bot with a selected strategy."""
+    user = get_current_user(request)
+    if not user or user["id"] != uid:
+        return RedirectResponse("/login", status_code=303)
+    start_bot(uid, strategy)
     return RedirectResponse("/", status_code=303)
 
-@app.api_route("/stop/{uid}", methods=["GET","POST"])
+@app.api_route("/stop/{uid}", methods=["GET", "POST"])
 def stop(uid: int, request: Request):
     user = get_current_user(request)
     if not user or user["id"] != uid:
@@ -88,38 +106,32 @@ def stop(uid: int, request: Request):
     stop_bot(uid)
     return RedirectResponse("/", status_code=303)
 
-# SSE endpoint: send full bot_state every second
+# ---------- Stream logs ----------
 @app.get("/stream_logs/{uid}")
 def stream_logs(uid: int):
     def log_generator():
         path = os.path.join(LOG_DIR, f"user_{uid}.log")
         if not os.path.exists(path):
-            open(path, "w").close()  # create empty log
+            open(path, "w").close()
         with open(path, "r") as f:
-            f.seek(0, os.SEEK_END)  # go to end of file
+            f.seek(0, os.SEEK_END)
             while True:
                 line = f.readline()
                 if line:
                     yield f"data: {line.rstrip()}\n\n"
                 else:
                     time.sleep(0.5)
-
     return StreamingResponse(log_generator(), media_type="text/event-stream")
 
-# --- portfolio tracking
+# ---------- Portfolio tracking ----------
 @app.get("/api/portfolio/{uid}")
 def get_portfolio(request: Request):
-    """
-    Return live portfolio data for the currently logged-in user.
-    """
     user = get_current_user(request)
     if not user:
         return {"error": "Unauthorized"}
-
     uid = user["id"]
     try:
         data = fetch_portfolio(uid)
         return data
     except Exception as e:
         return {"error": str(e)}
-

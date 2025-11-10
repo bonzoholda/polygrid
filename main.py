@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resou
 # --- Core system imports ---
 import time
 import logging
+import threading
 from typing import Optional
 from utils import (
     get_pol_price_from_okx,
@@ -18,6 +19,12 @@ from utils import (
 )
 from ai_module import MLSignalGeneratorOKX
 from config import usdt, wmatic, OWNER, USDT_ADDR, WMATIC_ADDR
+
+# Optional import of asset_balancer
+try:
+    from asset_balancer import run_asset_balancer
+except ImportError:
+    run_asset_balancer = None
 
 
 # ---------- Position class ----------
@@ -40,8 +47,8 @@ class Position:
 ml_signal = MLSignalGeneratorOKX()
 
 
-# ---------- Main bot behavior ----------
-def main_loop(poll_interval=60):
+# ---------- Grid+DCA Strategy ----------
+def grid_dca_loop(poll_interval=60):
     logging.info("🚀 Starting DEX Grid Bot main loop (with enhanced AI + trailing) ...")
     in_position = False
     position: Optional[Position] = None
@@ -159,14 +166,62 @@ def main_loop(poll_interval=60):
             time.sleep(10)
 
 
+# ---------- Strategy Switcher ----------
+active_strategy = None
+bot_thread = None
+
+
+def start_bot(strategy: str = "grid_dca"):
+    global bot_thread, active_strategy
+    if active_strategy:
+        logging.warning(f"⚠️ {active_strategy} is already running. Stop it first.")
+        return
+
+    if strategy not in ["grid_dca", "asset_balancer"]:
+        logging.error(f"❌ Invalid strategy: {strategy}")
+        return
+
+    def runner():
+        if strategy == "grid_dca":
+            grid_dca_loop(poll_interval=60)
+        elif strategy == "asset_balancer" and run_asset_balancer:
+            run_asset_balancer()
+        else:
+            logging.error("Asset Balancer module not found.")
+        logging.info(f"🛑 {strategy} loop exited.")
+
+    active_strategy = strategy
+    bot_thread = threading.Thread(target=runner, daemon=True)
+    bot_thread.start()
+    logging.info(f"🎯 Strategy started: {strategy}")
+
+
+def stop_bot():
+    global active_strategy
+    if not active_strategy:
+        logging.warning("⚠️ No active strategy running.")
+        return
+    logging.info(f"🛑 Stopping {active_strategy} gracefully...")
+    active_strategy = None
+
+
 # ---------- Entry Point ----------
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
-    logging.info("🚀 Bot container initialized. Starting trading loop...")
+    logging.info("🚀 Bot container initialized.")
+
+    # Choose strategy manually here (you can replace with UI control later)
+    # Available: "grid_dca" or "asset_balancer"
+    selected_strategy = "grid_dca"
+
+    logging.info(f"🎯 Selected strategy: {selected_strategy}")
     try:
-        main_loop(poll_interval=60)  # adjust polling interval (seconds)
+        start_bot(selected_strategy)
+        while True:
+            time.sleep(10)
     except KeyboardInterrupt:
+        stop_bot()
         logging.info("🛑 Manual stop received. Exiting gracefully...")

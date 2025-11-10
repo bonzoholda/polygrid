@@ -37,7 +37,8 @@ def init_db():
             address TEXT,
             encrypted_key TEXT,
             is_active INTEGER DEFAULT 0,
-            log_file TEXT
+            log_file TEXT,
+            strategy TEXT DEFAULT 'grid_dca'
         )
     """)
     conn.commit()
@@ -83,6 +84,12 @@ def set_active(uid, active):
     conn.commit()
     conn.close()
 
+def update_strategy(uid, strategy):
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("UPDATE bots SET strategy=? WHERE id=?", (strategy, uid))
+    conn.commit()
+    conn.close()
+
 def tail_log(uid, n=50):
     path = os.path.join(LOG_DIR, f"user_{uid}.log")
     if not os.path.exists(path):
@@ -101,7 +108,10 @@ def get_users():
 # ------------------------------
 # Bot process management
 # ------------------------------
-def start_bot(uid):
+def start_bot(uid, strategy="grid_dca"):
+    """
+    Start a bot for a user with the chosen strategy.
+    """
     user = get_user(uid)
     if not user or processes.get(uid):
         return False
@@ -109,8 +119,15 @@ def start_bot(uid):
     log_file = os.path.join(LOG_DIR, f"user_{uid}.log")
     os.makedirs(LOG_DIR, exist_ok=True)
 
+    # Save strategy choice to DB
+    update_strategy(uid, strategy)
+
     project_root = os.path.dirname(os.path.dirname(__file__))
-    bot_path = os.path.join(project_root, "main.py")
+    if strategy == "asset_balancer":
+        bot_path = os.path.join(project_root, "asset_balancer.py")
+    else:
+        bot_path = os.path.join(project_root, "main.py")
+
     if not os.path.exists(bot_path):
         logging.error(f"❌ Bot file not found at {bot_path}")
         return False
@@ -118,9 +135,10 @@ def start_bot(uid):
     env = os.environ.copy()
     env["OWNER_ADDR"] = user["address"]
     env["PRIVATE_KEY"] = decrypt_key(user["encrypted_key"])
+    env["BOT_STRATEGY"] = strategy
 
     log_handle = open(log_file, "a")
-    log_handle.write(f"\n=== Starting bot for {user['name']} ===\n")
+    log_handle.write(f"\n=== Starting bot for {user['name']} (strategy: {strategy}) ===\n")
 
     proc = subprocess.Popen(
         ["python", bot_path],
@@ -132,7 +150,7 @@ def start_bot(uid):
 
     processes[uid] = proc
     set_active(uid, True)
-    logging.info(f"🚀 Started bot {uid} ({user['name']}) [PID {proc.pid}]")
+    logging.info(f"🚀 Started {strategy} bot {uid} ({user['name']}) [PID {proc.pid}]")
     return True
 
 def stop_bot(uid):
@@ -153,5 +171,6 @@ def auto_resume():
     users = get_users()
     for u in users:
         if u["is_active"]:
-            logging.info(f"🔁 Resuming bot {u['id']} ({u['name']})")
-            start_bot(u["id"])
+            strategy = u.get("strategy", "grid_dca")
+            logging.info(f"🔁 Resuming bot {u['id']} ({u['name']}) with strategy {strategy}")
+            start_bot(u["id"], strategy)

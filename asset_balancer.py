@@ -11,11 +11,18 @@ THRESHOLD = 0.10        # Trigger rebalance if one side deviates >10%
 TRADE_PORTION = 0.5     # Trade only 50% of the deviation
 COOLDOWN = 60 * 30      # 30-minute minimum between rebalances
 
+
 def get_portfolio_value():
     """Return USDT balance, WMATIC balance, their USDT values, and total."""
     price = get_pol_price_from_okx()
+    if not price or price <= 0:
+        logging.warning("⚠️ Invalid price data received, skipping rebalance.")
+        return 0, 0, 0, 0, 0
+
+    # Adjust this depending on utils.py signature
     usdt_bal = get_onchain_token_balance(usdt, OWNER)
     wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
+
     wmatic_val = wmatic_bal * price
     total = usdt_bal + wmatic_val
     return usdt_bal, wmatic_bal, wmatic_val, total, price
@@ -26,7 +33,7 @@ def rebalance_once():
     if total == 0:
         logging.warning("⚠️ Portfolio total is zero or invalid, skipping rebalance.")
         return False
-    
+
     target_val = total * TARGET_RATIO
     delta = wmatic_val - target_val
 

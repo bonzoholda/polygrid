@@ -107,7 +107,7 @@ def stream_logs(uid: int):
     return StreamingResponse(log_generator(), media_type="text/event-stream")
 
 # --- portfolio tracking
-@app.get("/api/portfolio")
+@app.get("/api/portfolio/{uid}")
 def get_portfolio(request: Request):
     """
     Return live portfolio data for the currently logged-in user.

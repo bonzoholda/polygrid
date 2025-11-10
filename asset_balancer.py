@@ -86,16 +86,8 @@ if __name__ == "__main__":
 
     logging.info("🚀 Asset Balancer bot initialized.")
     try:
-        # Import your main entry function here if it exists (e.g., start_asset_balancer)
-        # Otherwise, simulate the continuous balancing loop:
-        logging.info("⚙️ Starting Asset Balancer main loop...")
-
-        # Example: placeholder loop until real implementation
-        while True:
-            # Call your periodic rebalance function here
-            time.sleep(10)
-            logging.info("🔄 Asset Balancer heartbeat tick...")
-
+        logging.info("⚙️ Starting Asset Balancer Strategy Loop...")
+        run_asset_balancer()  # 👈 this calls your actual rebalancing logic
     except KeyboardInterrupt:
         logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
     except Exception as e:

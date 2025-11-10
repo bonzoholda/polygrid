@@ -140,8 +140,23 @@
             <button type="submit" class="stop">Stop Bot</button>
         </form>
 
+        <!-- ✅ Added portfolio summary display -->
         <div class="chart-container">
             <h3>Portfolio Overview</h3>
+            <div style="display:flex; justify-content:space-around; margin-bottom:1rem; text-align:center;">
+                <div>
+                    <strong>USDT</strong>
+                    <p id="usdtBalance">--</p>
+                </div>
+                <div>
+                    <strong>WMATIC</strong>
+                    <p id="wmaticBalance">--</p>
+                </div>
+                <div>
+                    <strong>Total (USDT)</strong>
+                    <p id="portfolioValue">--</p>
+                </div>
+            </div>
             <canvas id="portfolioChart"></canvas>
         </div>
 
@@ -164,13 +179,14 @@
         };
 
         // ---------- Portfolio Chart ----------
+
         const ctx = document.getElementById('portfolioChart').getContext('2d');
         const chart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Portfolio Value (USDT + WMATIC)',
+                    label: 'Portfolio Value (USDT)',
                     data: [],
                     borderColor: '#58a6ff',
                     backgroundColor: 'rgba(88,166,255,0.1)',
@@ -190,14 +206,29 @@
             }
         });
 
-        // Fetch portfolio data periodically
+        // ✅ Updated fetchPortfolio to work with new JSON format
         async function fetchPortfolio() {
             try {
                 const res = await fetch(`/api/portfolio/${uid}`);
                 const data = await res.json();
-                chart.data.labels = data.timestamps;
-                chart.data.datasets[0].data = data.values;
-                chart.update();
+
+                if (data.total_value_usdt) {
+                    const now = new Date().toLocaleTimeString();
+                    chart.data.labels.push(now);
+                    chart.data.datasets[0].data.push(data.total_value_usdt);
+
+                    if (chart.data.labels.length > 30) {
+                        chart.data.labels.shift();
+                        chart.data.datasets[0].data.shift();
+                    }
+
+                    chart.update();
+
+                    // update the text balances
+                    document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
+                    document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
+                    document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
+                }
             } catch (err) {
                 console.warn("Failed to fetch portfolio data", err);
             }

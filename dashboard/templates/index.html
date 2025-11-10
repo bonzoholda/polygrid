@@ -193,7 +193,7 @@
         // Fetch portfolio data periodically
         async function fetchPortfolio() {
             try {
-                const res = await fetch(`/portfolio_data/${uid}`);
+                const res = await fetch(`/portfolio/${uid}`);
                 const data = await res.json();
                 chart.data.labels = data.timestamps;
                 chart.data.datasets[0].data = data.values;

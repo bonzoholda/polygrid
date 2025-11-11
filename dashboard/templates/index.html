@@ -304,12 +304,20 @@
 
         // ---------- Portfolio Fetch ----------
         let initialRecorded = false;
+        let initialPortfolioValue = null;
+        let startTimestamp = null;
 
+        
         async function fetchPortfolio() {
             try {
                 const res = await fetch(`/api/portfolio/${uid}`);
                 const data = await res.json();
 
+                if (!initialPortfolioValue && data.init_portfolio_value) {
+                    initialPortfolioValue = data.init_portfolio_value;
+                    startTimestamp = data.start_timestamp;
+                }
+                
                 if (data.total_value_usdt) {
                     const now = new Date().toLocaleTimeString();
                     if (!initialRecorded) {

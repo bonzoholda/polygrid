@@ -15,6 +15,8 @@ from manager import (
     stop_bot,
     auto_resume,
     LOG_DIR,
+    record_bot_stat,
+    get_bot_stat,
 )
 from core.portfolio import fetch_portfolio
 
@@ -135,3 +137,22 @@ def get_portfolio(request: Request):
         return data
     except Exception as e:
         return {"error": str(e)}
+
+
+# ---------- Bot statistics (initial value + runtime + growth) ----------
+@app.post("/api/botstat/{uid}")
+def start_bot_tracking(uid: int, request: Request):
+    """Record the initial portfolio and timestamp when bot starts."""
+    user = get_current_user(request)
+    if not user or user["id"] != uid:
+        return {"error": "Unauthorized"}
+    return record_bot_stat(uid)
+
+@app.get("/api/botstat/{uid}")
+def get_bot_tracking(uid: int, request: Request):
+    """Return live bot runtime and portfolio growth."""
+    user = get_current_user(request)
+    if not user or user["id"] != uid:
+        return {"error": "Unauthorized"}
+    return get_bot_stat(uid)
+

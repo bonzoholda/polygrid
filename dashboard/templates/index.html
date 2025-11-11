@@ -336,6 +336,8 @@
                     document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
                     document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
                     document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
+                    document.getElementById("initialVal").textContent = initialPortfolioValue.toFixed(3);
+                    
                 }
             } catch (err) {
                 console.warn("Failed to fetch portfolio data", err);
@@ -347,7 +349,7 @@
                 const res = await fetch(`/api/botstat/${uid}`);
                 const stat = await res.json();
                 if (!stat.error) {
-                    document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);
+
                     document.getElementById("growthPct").textContent = stat.growth_pct.toFixed(2) + "%";
                     document.getElementById("runtime").textContent = stat.duration;
                 }

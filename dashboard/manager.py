@@ -1,6 +1,7 @@
 import subprocess, signal, sqlite3, time, logging, os, sys
 from cryptography.fernet import Fernet
 import bcrypt
+from core.portfolio import fetch_portfolio
 
 # Allow imports from root project folder
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -192,11 +193,46 @@ def auto_resume():
             start_bot(u["id"], strategy)
 
 
-def record_bot_start(uid, initial_portfolio_value):
-    bot_state[uid] = {
-        "start_time": time.time(),
-        "initial_portfolio": initial_portfolio_value
-    }
+def record_bot_stat(uid):
+    """Record initial portfolio value and start time."""
+    try:
+        data = fetch_portfolio(uid)
+        if "total_value_usdt" not in data:
+            return {"error": "Portfolio fetch failed"}
+        bot_state[uid] = {
+            "start_time": time.time(),
+            "initial_value": data["total_value_usdt"],
+        }
+        return {"message": "Bot stat recorded", **bot_state[uid]}
+    except Exception as e:
+        return {"error": str(e)}
 
-def get_bot_state(uid):
-    return bot_state.get(uid, None)
+def get_bot_stat(uid):
+    """Return current runtime duration and growth stats."""
+    if uid not in bot_state:
+        return {"error": "Bot not started or no stats recorded yet"}
+
+    try:
+        current = fetch_portfolio(uid)
+        start_time = bot_state[uid]["start_time"]
+        initial_value = bot_state[uid]["initial_value"]
+        duration_sec = time.time() - start_time
+
+        # Format duration as dd:hh:mm
+        days = int(duration_sec // 86400)
+        hours = int((duration_sec % 86400) // 3600)
+        minutes = int((duration_sec % 3600) // 60)
+        duration_str = f"{days:02d}:{hours:02d}:{minutes:02d}"
+
+        current_value = current["total_value_usdt"]
+        growth_pct = ((current_value - initial_value) / initial_value) * 100
+
+        return {
+            "uid": uid,
+            "initial_value": initial_value,
+            "current_value": current_value,
+            "growth_pct": round(growth_pct, 3),
+            "duration": duration_str,
+        }
+    except Exception as e:
+        return {"error": str(e)}

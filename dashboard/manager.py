@@ -214,53 +214,87 @@ def auto_resume():
 
 
 def record_bot_stat(uid):
-    """Record initial portfolio value and start time."""
+    """Record initial portfolio value and start time for a bot."""
     try:
-        
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("SELECT init_portfolio_value, start_timestamp FROM bots WHERE id=?", (uid,))
         row = c.fetchone()
         conn.close()
-        if row:
-            data["init_portfolio_value"] = row[0]
-            data["start_timestamp"] = row[1]        
-        return data
-        
+
+        if not row:
+            return {"error": f"No record found for uid {uid}"}
+
+        init_value, start_timestamp = row
+        if not start_timestamp:
+            return {"error": "Bot not started yet"}
+
+        # Convert stored timestamp (ISO string) to UNIX time
+        try:
+            start_dt = datetime.fromisoformat(start_timestamp)
+            start_unix = start_dt.timestamp()
+        except Exception:
+            start_unix = time.time()
+
+        # Save to in-memory state
         bot_state[uid] = {
-            "start_time": data["start_timestamp"],
-            "initial_value": data["init_portfolio_value"],
+            "start_time": start_unix,
+            "initial_value": init_value,
         }
+
+        logging.info(f"📈 Recorded bot stat for uid={uid}: init={init_value}, start={start_timestamp}")
         return {"message": "Bot stat recorded", **bot_state[uid]}
+
     except Exception as e:
+        logging.error(f"❌ record_bot_stat() failed for uid={uid}: {e}")
         return {"error": str(e)}
+
 
 def get_bot_stat(uid):
     """Return current runtime duration and growth stats."""
-    if uid not in bot_state:
-        return {"error": "Bot not started or no stats recorded yet"}
-
     try:
-        current = fetch_portfolio(uid)
-        start_time = bot_state[uid]["start_time"]
-        initial_value = bot_state[uid]["initial_value"]
-        duration_sec = time.time() - start_time
+        # If bot state is not loaded in memory, reload from DB
+        if uid not in bot_state:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("SELECT init_portfolio_value, start_timestamp FROM bots WHERE id=?", (uid,))
+            row = c.fetchone()
+            conn.close()
+            if row and row[0] and row[1]:
+                start_dt = datetime.fromisoformat(row[1])
+                bot_state[uid] = {
+                    "start_time": start_dt.timestamp(),
+                    "initial_value": row[0],
+                }
+            else:
+                return {"error": "No initial stat recorded for this bot."}
 
-        # Format duration as dd:hh:mm
+        # Current portfolio snapshot
+        current = fetch_portfolio(uid)
+        if "total_value_usdt" not in current:
+            return {"error": f"Portfolio fetch failed: {current.get('error', 'unknown error')}"}
+
+        # Duration calculation
+        start_time = bot_state[uid]["start_time"]
+        duration_sec = time.time() - start_time
         days = int(duration_sec // 86400)
         hours = int((duration_sec % 86400) // 3600)
         minutes = int((duration_sec % 3600) // 60)
         duration_str = f"{days:02d}:{hours:02d}:{minutes:02d}"
 
+        # Growth percentage
+        initial_value = bot_state[uid]["initial_value"]
         current_value = current["total_value_usdt"]
-        growth_pct = ((current_value - initial_value) / initial_value) * 100
+        growth_pct = ((current_value - initial_value) / initial_value) * 100 if initial_value else 0.0
 
         return {
             "uid": uid,
-            "initial_value": initial_value,
-            "current_value": current_value,
+            "initial_value": round(initial_value, 6),
+            "current_value": round(current_value, 6),
             "growth_pct": round(growth_pct, 3),
             "duration": duration_str,
         }
+
     except Exception as e:
+        logging.error(f"❌ get_bot_stat() failed for uid={uid}: {e}")
         return {"error": str(e)}

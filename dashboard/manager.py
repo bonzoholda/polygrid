@@ -216,12 +216,20 @@ def auto_resume():
 def record_bot_stat(uid):
     """Record initial portfolio value and start time."""
     try:
-        data = fetch_portfolio(uid)
-        if "total_value_usdt" not in data:
-            return {"error": "Portfolio fetch failed"}
+        
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT init_portfolio_value, start_timestamp FROM bots WHERE id=?", (uid,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            data["init_portfolio_value"] = row[0]
+            data["start_timestamp"] = row[1]        
+        return data
+        
         bot_state[uid] = {
-            "start_time": time.time(),
-            "initial_value": data["total_value_usdt"],
+            "start_time": data["start_timestamp"],
+            "initial_value": data["init_portfolio_value"],
         }
         return {"message": "Bot stat recorded", **bot_state[uid]}
     except Exception as e:

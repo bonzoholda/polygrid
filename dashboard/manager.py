@@ -251,9 +251,9 @@ def record_bot_stat(uid):
 
 
 def get_bot_stat(uid):
-    """Return current runtime duration and growth stats."""
+    """Return current runtime duration and growth stats (persistent across relogins)."""
     try:
-        # If bot state is not loaded in memory, reload from DB
+        # Reload from DB only if not in memory
         if uid not in bot_state:
             conn = sqlite3.connect(DB_FILE)
             c = conn.cursor()
@@ -269,10 +269,13 @@ def get_bot_stat(uid):
             else:
                 return {"error": "No initial stat recorded for this bot."}
 
-        # Current portfolio snapshot
+        # ✅ Always fetch *latest* portfolio value
         current = fetch_portfolio(uid)
-        if "total_value_usdt" not in current:
+        if "total_value_usdt" not in current or current["total_value_usdt"] == 0:
             return {"error": f"Portfolio fetch failed: {current.get('error', 'unknown error')}"}
+
+        # Extract live data
+        current_value = current["total_value_usdt"]
 
         # Duration calculation
         start_time = bot_state[uid]["start_time"]
@@ -284,7 +287,6 @@ def get_bot_stat(uid):
 
         # Growth percentage
         initial_value = bot_state[uid]["initial_value"]
-        current_value = current["total_value_usdt"]
         growth_pct = ((current_value - initial_value) / initial_value) * 100 if initial_value else 0.0
 
         return {

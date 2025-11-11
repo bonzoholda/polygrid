@@ -21,6 +21,7 @@ fernet = Fernet(open(KEY_FILE, "rb").read())
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 processes = {}  # user_id -> subprocess.Popen
+bot_state = {}
 
 
 # ------------------------------
@@ -189,3 +190,13 @@ def auto_resume():
             strategy = u.get("strategy", "grid_dca")
             logging.info(f"🔁 Resuming bot {u['id']} ({u['name']}) with strategy {strategy}")
             start_bot(u["id"], strategy)
+
+
+def record_bot_start(uid, initial_portfolio_value):
+    bot_state[uid] = {
+        "start_time": time.time(),
+        "initial_portfolio": initial_portfolio_value
+    }
+
+def get_bot_state(uid):
+    return bot_state.get(uid, None)

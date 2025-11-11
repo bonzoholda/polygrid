@@ -133,15 +133,8 @@ def get_portfolio(request: Request):
         return {"error": "Unauthorized"}
     uid = user["id"]
     try:
-        data = fetch_portfolio(uid)
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("SELECT init_portfolio_value, start_timestamp FROM bots WHERE id=?", (uid,))
-        row = c.fetchone()
-        conn.close()
-        if row:
-            data["init_portfolio_value"] = row[0]
-            data["start_timestamp"] = row[1]        
+        data = fetch_portfolio(uid)    
+        
         return data
     except Exception as e:
         return {"error": str(e)}

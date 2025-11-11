@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DEX Bot Dashboard</title>
+    <title>DEXtrader-V5 Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400&family=Fira+Code&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -305,13 +305,11 @@
         // ---------- Portfolio Fetch ----------
         let initialRecorded = false;
 
-        
         async function fetchPortfolio() {
             try {
                 const res = await fetch(`/api/portfolio/${uid}`);
                 const data = await res.json();
 
-                
                 if (data.total_value_usdt) {
                     const now = new Date().toLocaleTimeString();
                     if (!initialRecorded) {
@@ -330,7 +328,6 @@
                     document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
                     document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
                     document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
-                    
                 }
             } catch (err) {
                 console.warn("Failed to fetch portfolio data", err);
@@ -342,7 +339,7 @@
                 const res = await fetch(`/api/botstat/${uid}`);
                 const stat = await res.json();
                 if (!stat.error) {
-                    document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);            
+                    document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);
                     document.getElementById("growthPct").textContent = stat.growth_pct.toFixed(2) + "%";
                     document.getElementById("runtime").textContent = stat.duration;
                 }
@@ -357,4 +354,4 @@
         setInterval(updateBotStats, 30000);
     </script>
 </body>
-</html>
+</html> 

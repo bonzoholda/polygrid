@@ -1,10 +1,12 @@
 import subprocess, signal, sqlite3, time, logging, os, sys
 from cryptography.fernet import Fernet
 import bcrypt
-from core.portfolio import fetch_portfolio
+
 
 # Allow imports from root project folder
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from core.portfolio import fetch_portfolio
 
 DB_FILE = os.path.join(os.path.dirname(__file__), "data", "bots.db")
 LOG_DIR = os.path.join(os.path.dirname(__file__), "data", "logs")

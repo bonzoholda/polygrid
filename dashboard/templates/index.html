@@ -139,9 +139,36 @@
         }
         .portfolio-summary p {
             font-family: 'Exo 2', sans-serif;
-            font-size: 3rem;
+            font-size: 2.8rem;
             color: #e6edf3;
             margin: 0;
+        }
+
+        /* ---------- Stats Panel ---------- */
+        .bot-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 1rem;
+            text-align: center;
+            gap: 0.5rem;
+        }
+        .bot-stats div {
+            background: rgba(0, 224, 255, 0.05);
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            border: 1px solid rgba(0, 224, 255, 0.08);
+            min-width: 90px;
+        }
+        .bot-stats strong {
+            display: block;
+            color: #00e0ff;
+            font-size: 0.9rem;
+            margin-bottom: 0.2rem;
+        }
+        .bot-stats p {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #e6edf3;
         }
 
         /* ---------- Logs ---------- */
@@ -175,7 +202,7 @@
         @media(max-width: 600px) {
             .container { padding: 1rem; margin: 1rem; }
             header { flex-direction: column; align-items: flex-start; gap: 1rem; }
-            .portfolio-summary { flex-direction: column; gap: 0.5rem; }
+            .portfolio-summary, .bot-stats { flex-direction: column; gap: 0.5rem; }
         }
     </style>
 </head>
@@ -220,6 +247,13 @@
                     <p id="portfolioValue">--</p>
                 </div>
             </div>
+
+            <div class="bot-stats">
+                <div><strong>Initial</strong><p id="initialVal">--</p></div>
+                <div><strong>Growth</strong><p id="growthPct">--%</p></div>
+                <div><strong>Runtime</strong><p id="runtime">--:--:--</p></div>
+            </div>
+
             <canvas id="portfolioChart"></canvas>
         </div>
 
@@ -241,7 +275,7 @@
             console.error("SSE connection lost, attempting to reconnect...");
         };
 
-        // ---------- Portfolio Chart ----------
+        // ---------- Chart ----------
         const ctx = document.getElementById('portfolioChart').getContext('2d');
         const chart = new Chart(ctx, {
             type: 'line',
@@ -268,12 +302,21 @@
             }
         });
 
+        // ---------- Portfolio Fetch ----------
+        let initialRecorded = false;
+
         async function fetchPortfolio() {
             try {
                 const res = await fetch(`/api/portfolio/${uid}`);
                 const data = await res.json();
+
                 if (data.total_value_usdt) {
                     const now = new Date().toLocaleTimeString();
+                    if (!initialRecorded) {
+                        await fetch(`/api/botstat/${uid}`, { method: "POST" });
+                        initialRecorded = true;
+                    }
+
                     chart.data.labels.push(now);
                     chart.data.datasets[0].data.push(data.total_value_usdt);
                     if (chart.data.labels.length > 30) {
@@ -281,6 +324,7 @@
                         chart.data.datasets[0].data.shift();
                     }
                     chart.update();
+
                     document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
                     document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
                     document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
@@ -290,8 +334,24 @@
             }
         }
 
+        async function updateBotStats() {
+            try {
+                const res = await fetch(`/api/botstat/${uid}`);
+                const stat = await res.json();
+                if (!stat.error) {
+                    document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);
+                    document.getElementById("growthPct").textContent = stat.growth_pct.toFixed(2) + "%";
+                    document.getElementById("runtime").textContent = stat.duration;
+                }
+            } catch (e) {
+                console.warn("Failed to fetch bot stats", e);
+            }
+        }
+
         fetchPortfolio();
+        updateBotStats();
         setInterval(fetchPortfolio, 15000);
+        setInterval(updateBotStats, 30000);
     </script>
 </body>
 </html>

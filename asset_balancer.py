@@ -7,8 +7,8 @@ from utils import get_onchain_token_balance, get_pol_price_from_okx, swap_usdt_t
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
 TARGET_RATIO = 0.5      # 50% USDT / 50% WMATIC
-THRESHOLD = 0.05        # Trigger rebalance if one side deviates >10%
-TRADE_PORTION = 0.75     # Trade only 50% of the deviation
+THRESHOLD = 0.03        # Trigger rebalance if one side deviates >10%
+TRADE_PORTION = 0.9     # Trade only 50% of the deviation
 COOLDOWN = 60 * 10      # 10-minute minimum between rebalances
 
 

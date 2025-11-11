@@ -2,10 +2,11 @@
 
 import logging
 from config import w3, router, usdt, wmatic
-from dashboard.manager import get_user  # 👈 to access wallet address and keys per user
+
 
 
 def fetch_portfolio(uid: int):
+    from dashboard.manager import get_user  # 👈 to access wallet address and keys per user
     """
     Fetch current portfolio state for a given user (by uid):
     - USDT + WMATIC balances

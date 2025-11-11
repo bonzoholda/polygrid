@@ -342,7 +342,7 @@
                 const res = await fetch(`/api/botstat/${uid}`);
                 const stat = await res.json();
                 if (!stat.error) {
-                    document.getElementById("initialVal").textContent = stat.initialPortfolio.toFixed(3);            
+                    document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);            
                     document.getElementById("growthPct").textContent = stat.growth_pct.toFixed(2) + "%";
                     document.getElementById("runtime").textContent = stat.duration;
                 }

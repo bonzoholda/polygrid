@@ -36,8 +36,10 @@ def rebalance_once():
 
     target_val = total * TARGET_RATIO
     delta = wmatic_val - target_val
+    ratio = usdt_bal / total
 
     logging.info(f"📊 Portfolio: USDT=${usdt_bal:.3f} | WMATIC=${wmatic_val:.3f} | Total=${total:.3f}")
+    logging.info(f"🔍 Ratio={ratio:.3f}, Target={TARGET_RATIO}, Threshold={THRESHOLD}")
 
     # WMATIC grew → sell some to USDT
     if delta > total * THRESHOLD:

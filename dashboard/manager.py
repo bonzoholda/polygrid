@@ -43,7 +43,9 @@ def init_db():
             encrypted_key TEXT,
             is_active INTEGER DEFAULT 0,
             log_file TEXT,
-            strategy TEXT DEFAULT 'grid_dca'
+            strategy TEXT DEFAULT 'grid_dca',
+            init_portfolio_value REAL,
+            start_timestamp TEXT
         )
     """)
     conn.commit()
@@ -156,6 +158,20 @@ def start_bot(uid, strategy="grid_dca"):
         log_handle.write(f"\n=== Starting bot for {user['name']} (strategy: {strategy}) ===\n")
         log_handle.flush()
 
+    # --- init stat recording
+    portfolio = fetch_portfolio(uid)
+    init_value = portfolio.get("total_value_usdt", 0)
+    now = datetime.utcnow().isoformat()
+
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        c.execute(
+            "UPDATE bots SET init_portfolio_value=?, start_timestamp=? WHERE id=?",
+            (init_value, now, uid)
+        )
+        conn.commit()
+    # ------ 
+    
     # ⚡ Launch Python in unbuffered mode (-u)
     proc = subprocess.Popen(
         [sys.executable, "-u", bot_path],

@@ -267,7 +267,9 @@
         <p><strong>Wallet Address:</strong> {{ user['address'] }}</p>
         <p><strong>Status:</strong>
             {% if user['is_active'] %}
-                <span class="status running">Running</span>
+                <span class="status running">
+                    Running the {{ user['strategy'] }} strategy 
+                </span>
             {% else %}
                 <span class="status stopped">Stopped</span>
             {% endif %}

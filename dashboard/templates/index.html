@@ -111,6 +111,55 @@
             box-shadow: 0 0 8px rgba(255, 80, 80, 0.25);
         }
 
+          .button-container {
+            margin-top: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1rem;
+          }
+        
+          @media (min-width: 640px) {
+            .button-container {
+              flex-direction: row;
+            }
+          }
+        
+          @media (min-width: 768px) {
+            .button-container {
+              justify-content: flex-start;
+            }
+          }
+        
+          .btn {
+            font-weight: 600;
+            font-size: 1.125rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+          }
+        
+          .btn-primary {
+            background-color: transparent;
+            border: 1px solid #22d3ee; /* cyan-400 */
+            color: #67e8f9; /* cyan-300 */
+          }
+          .btn-primary:hover {
+            background-color: #0891b2; /* cyan-600 */
+            color: #000;              
+          }
+        
+          .btn-outline {
+            background-color: transparent;
+            border: 1px solid #22d3ee; /* magenta-400 */
+            color: #67e8f9; /* magenta-300 */
+          }
+          .btn-outline:hover {
+            background-color: #0891b2; /* magenta-600 */
+            color: #000;
+          }
+        
         /* ---------- Chart ---------- */
         .chart-container {
             margin-top: 2rem;
@@ -224,13 +273,15 @@
             {% endif %}
         </p>
 
-        <form method="get" action="/start/{{ user['id'] }}">
-            <button type="submit" class="start">Start Bot</button>
-        </form>
-        <form method="get" action="/stop/{{ user['id'] }}">
-            <button type="submit" class="stop">Stop Bot</button>
-        </form>
-
+        <div class="button-container">
+            <form method="get" action="/start/{{ user['id'] }}">
+                <button type="submit" class="btn btn-primary">Start Bot</button>
+            </form>
+            <form method="get" action="/stop/{{ user['id'] }}">
+                <button type="submit" class="btn btn-outline">Stop Bot</button>
+            </form>
+        </div>
+            
         <div class="chart-container">
             <h3>Portfolio Overview</h3>
             <div class="portfolio-summary">

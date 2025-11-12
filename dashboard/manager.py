@@ -283,7 +283,7 @@ def get_bot_stat(uid):
         days = int(duration_sec // 86400)
         hours = int((duration_sec % 86400) // 3600)
         minutes = int((duration_sec % 3600) // 60)
-        duration_str = f"{days:02d}:{hours:02d}:{minutes:02d}"
+        duration_str = f"{days}d:{hours:02d}h:{minutes:02d}m"
 
         # Growth percentage
         initial_value = bot_state[uid]["initial_value"]

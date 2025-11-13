@@ -3,7 +3,14 @@ import time
 import logging
 import requests
 from web3 import Web3
+from decimal import Decimal
 from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, USDT_ADDR, WMATIC_ADDR
+
+# ---------- Constants ----------
+MAX_UINT = 2**256 - 1
+GAS_LIMIT_APPROVE = 100_000
+GAS_LIMIT_SWAP = 600_000
+GAS_PRICE_LIMIT = 300 * (10**9)  # 300 gwei cap (skip tx if higher)
 
 # ---------- Helper Functions ----------
 
@@ -125,23 +132,34 @@ def get_token_decimals(token_contract):
         return 18
 
 def get_nonce():
-    return w3.eth.get_transaction_count(OWNER)
+    """Track pending transactions to avoid nonce conflicts"""
+    return w3.eth.get_transaction_count(OWNER, 'pending')
 
 def send_tx(tx):
+    """Sign and broadcast transaction safely with nonce + gas checks"""
+    g_params = gas_params()
+    if g_params is None:
+        logging.warning("⏳ Transaction skipped due to high gas.")
+        return None
+
+    tx.update(g_params)
     signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
     raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
     if raw is None:
         raise AttributeError("Web3 signed transaction missing raw transaction field.")
     tx_hash = w3.eth.send_raw_transaction(raw)
-    logging.info(f"✅ Transaction sent: {tx_hash.hex()}")
+    logging.info(f"✅ TX sent: {tx_hash.hex()}")
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    logging.info(f"🧾 Tx confirmed in block {receipt.blockNumber}")
+    logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
     return tx_hash.hex()
 
 
 def gas_params():
-    # Keep simple: use w3.eth.gas_price; you can swap to EIP-1559 style if you want.
+    """Dynamic gas settings with ceiling control"""
     g = w3.eth.gas_price
+    if g > GAS_PRICE_LIMIT:
+        logging.warning(f"⚠️ Gas too high ({g/1e9:.1f} gwei), skipping transaction attempt.")
+        return None
     return {"gasPrice": g, "chainId": w3.eth.chain_id}
 
 # ============================================================
@@ -333,61 +351,104 @@ def estimate_amounts_out(amount_in, path):
     except Exception:
         return None
 
-def approve_if_needed(token_contract, spender, owner_addr, amount):
-    allowance = token_contract.functions.allowance(owner_addr, spender).call()
-    dec = get_token_decimals(token_contract)
-    logging.info(f"Current allowance: {allowance / (10 ** dec)} tokens")
+def get_allowance(token_contract, owner, spender):
+    """Check token allowance for router"""
+    try:
+        allowance = token_contract.functions.allowance(owner, spender).call()
+        return allowance
+    except Exception as e:
+        logging.warning(f"Failed to check allowance: {e}")
+        return 0
 
-    if allowance >= int(amount):
-        logging.info("Sufficient allowance, no approval needed.")
-        return True
-
-    logging.info("Approving max allowance for spender...")
-    max_approve = 2 ** 256 - 1
-    tx = token_contract.functions.approve(spender, max_approve).build_transaction({
-        "from": owner_addr,
-        "nonce": get_nonce(),
-        **gas_params()
-    })
-    tx_hash = send_tx(tx)
-    logging.info(f"Approval tx sent: {tx_hash}")
-    time.sleep(3)
-
-    # Recheck after a delay
-    new_allowance = token_contract.functions.allowance(owner_addr, spender).call()
-    if new_allowance < int(amount):
-        raise RuntimeError("Approval failed — allowance still insufficient!")
-    return True
-
-
-def swap_usdt_to_wmatic(amount_in_usdt, slippage=0.02):
+def approve_if_needed(token_contract, spender, amount):
     """
-    Swap exact USDT -> WMATIC using router.swapExactTokensForTokensSupportingFeeOnTransferTokens
-    amount_in_usdt is float (human)
+    Approve router to spend token if allowance < required amount.
+    Approves MAX_UINT once to avoid repeated approvals.
     """
-    dec_usdt = get_token_decimals(usdt)
-    dec_wmatic = get_token_decimals(wmatic)
-    amt_in = to_decimals(amount_in_usdt, dec_usdt)
-    path = [USDT_ADDR, WMATIC_ADDR]
-    # estimate out
-    amounts = estimate_amounts_out(amt_in, path)
-    if not amounts:
-        raise RuntimeError("Failed to estimate amounts out.")
-    out_est = amounts[-1]
-    out_min = int(out_est * (1 - slippage))
-    # ensure approval
-    approve_token_direct(usdt, ROUTER_ADDR, amt_in)
-    tx = router.functions.swapExactTokensForTokens(
-        amt_in, out_min, path, OWNER, int(time.time()) + 60*10
-    ).build_transaction({
-        "from": OWNER,
-        "nonce": get_nonce(),
-        **gas_params()
-    })
-    tx_hash = send_tx(tx)
-    logging.info(f"Swap USDT->WMATIC tx sent: {tx_hash}")
-    time.sleep(5)
-    return tx_hash
+    try:
+        allowance = get_allowance(token_contract, OWNER, spender)
+        decimals = token_contract.functions.decimals().call()
+        amount_wei = int(Decimal(amount) * (10 ** decimals))
+
+        if allowance >= amount_wei:
+            logging.info(f"✅ Sufficient allowance ({allowance/(10**decimals):.2f}), no approval needed.")
+            return True
+
+        logging.info(f"🔐 Approving {spender[:8]}... for {token_contract.address[:8]} (MAX_UINT).")
+        tx = token_contract.functions.approve(spender, MAX_UINT).build_transaction({
+            "from": OWNER,
+            "nonce": get_nonce(),
+            "gas": GAS_LIMIT_APPROVE,
+            **(gas_params() or {})
+        })
+
+        tx_hash = send_tx(tx)
+        if tx_hash:
+            logging.info(f"✅ Approval successful: {tx_hash}")
+            return True
+        else:
+            logging.warning("⚠️ Approval skipped or failed.")
+            return False
+
+    except Exception as e:
+        logging.error(f"❌ Approval error: {e}", exc_info=True)
+        return False
+
+def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline):
+    """Perform token swap with gas ceiling and allowance safety"""
+    if gas_params() is None:
+        logging.warning("⏳ Gas too high, skipping swap.")
+        return None
+
+    try:
+        # Ensure approval first
+        if not approve_if_needed(usdt, ROUTER_ADDR, amount_in):
+            logging.warning("❌ Swap aborted — approval failed.")
+            return None
+
+        tx = router.functions.swapExactTokensForTokens(
+            int(amount_in),
+            int(amount_out_min),
+            path,
+            to,
+            deadline
+        ).build_transaction({
+            "from": OWNER,
+            "nonce": get_nonce(),
+            "gas": GAS_LIMIT_SWAP,
+            **(gas_params() or {})
+        })
+
+        return send_tx(tx)
+    except Exception as e:
+        logging.error(f"❌ Swap failed: {e}", exc_info=True)
+        return None
+
+
+def swap_usdt_to_wmatic(amount_usdt):
+    """Swap USDT → WMATIC safely using allowance + gas guard"""
+    try:
+        if amount_usdt <= 0:
+            logging.warning("⚠️ swap_usdt_to_wmatic called with zero or negative amount.")
+            return None
+
+        amount_in = int(Decimal(amount_usdt) * (10 ** 6))  # USDT decimals = 6
+        path = [USDT_ADDR, WMATIC_ADDR]
+        deadline = int(time.time()) + 600
+
+        logging.info(f"🔁 Swapping {amount_usdt:.4f} USDT → WMATIC ...")
+
+        return safe_swap_exact_tokens_for_tokens(
+            amount_in=amount_in,
+            amount_out_min=0,
+            path=path,
+            to=OWNER,
+            deadline=deadline
+        )
+
+    except Exception as e:
+        logging.error(f"❌ swap_usdt_to_wmatic failed: {e}", exc_info=True)
+        return None
 
 
 def approve_token_direct(token_contract, spender, amount):
@@ -405,45 +466,30 @@ def approve_token_direct(token_contract, spender, amount):
     return tx_hash
 
 
-def swap_wmatic_to_usdt(amount_in_wmatic, slippage=0.02):
-    """
-    Swap WMATIC -> USDT using QuickSwap (POL network).
-    """
+def swap_wmatic_to_usdt(amount_wmatic):
+    """Swap WMATIC → USDT safely using allowance + gas guard"""
     try:
-        dec_wmatic = get_token_decimals(wmatic)
-        dec_usdt = get_token_decimals(usdt)
+        if amount_wmatic <= 0:
+            logging.warning("⚠️ swap_wmatic_to_usdt called with zero or negative amount.")
+            return None
 
-        # Convert to wei (use web3.to_wei to be consistent)
-        amt_in = w3.to_wei(amount_in_wmatic, 'ether')  # WMATIC = 18 decimals
-
+        amount_in = int(Decimal(amount_wmatic) * (10 ** 18))  # WMATIC decimals = 18
         path = [WMATIC_ADDR, USDT_ADDR]
-        amounts = estimate_amounts_out(amt_in, path)
-        if not amounts:
-            raise RuntimeError("Failed to estimate amounts out.")
-        
-        out_est = amounts[-1]
-        out_min = int(out_est * (1 - slippage))
+        deadline = int(time.time()) + 600
 
-        # ✅ Explicit approval (don’t rely on allowance logic)
-        logging.info("Approving WMATIC for router (force refresh)...")
-        approve_token_direct(wmatic, ROUTER_ADDR, amt_in)
+        logging.info(f"🔁 Swapping {amount_wmatic:.4f} WMATIC → USDT ...")
 
-        tx = router.functions.swapExactTokensForTokens(
-            amt_in, out_min, path, OWNER, int(time.time()) + 60*10
-        ).build_transaction({
-            "from": OWNER,
-            "nonce": get_nonce(),
-            **gas_params()
-        })
-
-        tx_hash = send_tx(tx)
-        logging.info(f"Swap WMATIC->USDT tx sent: {tx_hash}")
-        time.sleep(5)
-        return tx_hash
+        return safe_swap_exact_tokens_for_tokens(
+            amount_in=amount_in,
+            amount_out_min=0,
+            path=path,
+            to=OWNER,
+            deadline=deadline
+        )
 
     except Exception as e:
-        logging.error(f"swap_wmatic_to_usdt() failed: {e}")
-        raise
+        logging.error(f"❌ swap_wmatic_to_usdt failed: {e}", exc_info=True)
+        return None
 
 
 # ---------- Main bot behavior ----------

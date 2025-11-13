@@ -76,19 +76,55 @@ w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 ERC20_ABI = [
     {
         "constant": True,
+        "inputs": [],
+        "name": "name",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "symbol",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "totalSupply",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
         "inputs": [{"name": "_owner", "type": "address"}],
         "name": "balanceOf",
         "outputs": [{"name": "balance", "type": "uint256"}],
         "type": "function",
     },
     {
-        "constant": True,
+        "constant": False,
+        "inputs": [{"name": "_to", "type": "address"}, {"name": "_value", "type": "uint256"}],
+        "name": "transfer",
+        "outputs": [{"name": "success", "type": "bool"}],
+        "type": "function",
+    },
+    {
+        "constant": False,
         "inputs": [
-            {"name": "_owner", "type": "address"},
-            {"name": "_spender", "type": "address"},
+            {"name": "_from", "type": "address"},
+            {"name": "_to", "type": "address"},
+            {"name": "_value", "type": "uint256"},
         ],
-        "name": "allowance",
-        "outputs": [{"name": "remaining", "type": "uint256"}],
+        "name": "transferFrom",
+        "outputs": [{"name": "success", "type": "bool"}],
         "type": "function",
     },
     {
@@ -102,16 +138,37 @@ ERC20_ABI = [
         "type": "function",
     },
     {
-        "constant": False,
+        "constant": True,
         "inputs": [
-            {"name": "_to", "type": "address"},
-            {"name": "_value", "type": "uint256"},
+            {"name": "_owner", "type": "address"},
+            {"name": "_spender", "type": "address"},
         ],
-        "name": "transfer",
-        "outputs": [{"name": "success", "type": "bool"}],
+        "name": "allowance",
+        "outputs": [{"name": "remaining", "type": "uint256"}],
         "type": "function",
     },
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "owner", "type": "address"},
+            {"indexed": True, "name": "spender", "type": "address"},
+            {"indexed": False, "name": "value", "type": "uint256"},
+        ],
+        "name": "Approval",
+        "type": "event",
+    },
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "from", "type": "address"},
+            {"indexed": True, "name": "to", "type": "address"},
+            {"indexed": False, "name": "value", "type": "uint256"},
+        ],
+        "name": "Transfer",
+        "type": "event",
+    },
 ]
+
 
 
 

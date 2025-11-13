@@ -216,28 +216,79 @@ def get_nonce():
     """Track pending transactions to avoid nonce conflicts"""
     return w3.eth.get_transaction_count(OWNER, 'pending')
 
+def get_safe_gas_price(multiplier=1.20, max_gwei=300, min_gwei=30):
+    base = w3.eth.gas_price
+    boosted = int(base * multiplier)
+    boosted = max(boosted, Web3.to_wei(min_gwei, 'gwei'))  # avoid tx stuck at 1 gwei
+    return min(boosted, Web3.to_wei(max_gwei, 'gwei'))
+
+
 def send_tx(tx):
-    """Sign and broadcast transaction safely with nonce + gas checks"""
+    """Sign and broadcast transaction safely with nonce + gas checks and retry-on-underpriced."""
+
+    # ---- initial gas params ----
     g_params = gas_params()
     if g_params is None:
         logging.warning("⏳ Transaction skipped due to high gas.")
         return None
 
     tx.update(g_params)
+
+    # ---- build + sign initial tx ----
     signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
     raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
     if raw is None:
         raise AttributeError("Web3 signed transaction missing raw transaction field.")
-    tx_hash = w3.eth.send_raw_transaction(raw)
-    logging.info(f"✅ TX sent: {tx_hash.hex()}")
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
-    return tx_hash.hex()
+
+    try:
+        # ---- try first broadcast ----
+        tx_hash = w3.eth.send_raw_transaction(raw)
+        logging.info(f"✅ TX sent: {tx_hash.hex()}")
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
+        return tx_hash.hex()
+
+    except ValueError as e:
+        err = str(e)
+
+        # ---- detect underpriced or low gas price ----
+        if ("underpriced" in err or 
+            "replacement transaction underpriced" in err or
+            "fee too low" in err or
+            "max fee per gas less than block base fee" in err):
+
+            logging.warning("⚠️ Gas underpriced — retrying with higher gas...")
+
+            # Increase only gasPrice in your gas_params()
+            retry_params = gas_params()
+            if retry_params:
+                # +40% bump
+                retry_params["gasPrice"] = int(retry_params["gasPrice"] * 1.40)
+
+                tx.update(retry_params)
+                signed_retry = w3.eth.account.sign_transaction(tx, PRIVATE_KEY)
+                raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
+
+                try:
+                    tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
+                    logging.info(f"🔄 Retry TX sent: {tx_hash_retry.hex()}")
+                    receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry)
+                    logging.info(f"🧾 Retry TX confirmed in block {receipt.blockNumber}")
+                    return tx_hash_retry.hex()
+
+                except Exception as e2:
+                    logging.error(f"❌ Retry failed: {e2}")
+                    return None
+
+        # ---- unknown error ----
+        logging.error(f"❌ TX failed: {e}")
+        return None
+
 
 
 def gas_params():
     """Dynamic gas settings with ceiling control"""
-    g = w3.eth.gas_price
+    g = get_safe_gas_price()
     if g > GAS_PRICE_LIMIT:
         logging.warning(f"⚠️ Gas too high ({g/1e9:.1f} gwei), skipping transaction attempt.")
         return None
@@ -531,20 +582,6 @@ def swap_usdt_to_wmatic(amount_usdt):
         logging.error(f"❌ swap_usdt_to_wmatic failed: {e}", exc_info=True)
         return None
 
-
-def approve_token_direct(token_contract, spender, amount):
-    """
-    Always send approval tx (without allowance check).
-    """
-    tx = token_contract.functions.approve(spender, amount).build_transaction({
-        "from": OWNER,
-        "nonce": get_nonce(),
-        **gas_params()
-    })
-    tx_hash = send_tx(tx)
-    logging.info(f"Approval tx sent: {tx_hash}")
-    time.sleep(2)
-    return tx_hash
 
 
 def swap_wmatic_to_usdt(amount_wmatic):

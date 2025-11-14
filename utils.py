@@ -1,76 +1,28 @@
 # utils.py
-import time
+import time, os, math
 import logging
 import requests
 from web3 import Web3
 from decimal import Decimal
 from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, USDT_ADDR, WMATIC_ADDR
 
-# ---------- Constants ----------
-MAX_UINT = 2**256 - 1
-GAS_LIMIT_APPROVE = 100_000
-GAS_LIMIT_SWAP = 600_000
-GAS_PRICE_LIMIT = 300 * (10**9)  # 300 gwei cap (skip tx if higher)
-
-# ---------- Helper Functions ----------
-
-def get_nonce():
-    # Track pending transactions to avoid nonce conflicts
-    return w3.eth.get_transaction_count(OWNER, 'pending')
-
-# dex_bot.py
-"""
-Polygon QuickSwap WMATIC/USDT Grid Trader (single-file)
-- Splits USDT balance into 7 lots: 1,1,2,3
-- Grid triggers: initial buy -> if price drops -3% -> buy 2nd (1 lot),
-                  then -10% from previous -> buy 3rd (2 lots),
-                  then -25% from previous -> buy 4th (3 lots)
-- Close when profit >= +0.5% (portfolio value vs cost basis)
-- AI BUY signal: tiny RandomForest trained on recent CoinGecko OHLC points (online each scan)
-- Environment variables:
-    RPC_URL      - Polygon RPC (e.g. https://polygon-rpc.com)
-    PRIVATE_KEY  - deployer private key (keep secret)
-    OWNER_ADDR   - your wallet address (checksum)
-    USDT_ADDR    - optional override
-    WMATIC_ADDR  - optional override
-    ROUTER_ADDR  - optional override (QuickSwap router default)
-- NOTE: This is a simple educational implementation. Test on small amounts / testnet first.
-"""
-
-import os
-import time
-import math
-import logging
-from decimal import Decimal
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
-import requests
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-from web3 import Web3
 from web3.middleware import geth_poa_middleware
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---------- Config / Addresses (defaults) ----------
-RPC_URL = os.getenv("RPC_URL", "https://polygon-rpc.com")
-PRIVATE_KEY = os.getenv("PRIVATE_KEY")
-OWNER = Web3.to_checksum_address(os.getenv("OWNER_ADDR", ""))  # set in Railway env
-USDT_ADDR = Web3.to_checksum_address(os.getenv("USDT_ADDR", "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"))  # USDT on Polygon
-WMATIC_ADDR = Web3.to_checksum_address(os.getenv("WMATIC_ADDR", "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"))
-ROUTER_ADDR = Web3.to_checksum_address(os.getenv("ROUTER_ADDR", "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff"))  # QuickSwap V2 Router
-
-if not PRIVATE_KEY or not OWNER:
-    raise RuntimeError("Set RPC_URL, PRIVATE_KEY, and OWNER_ADDR environment variables before running.")
-
-# ---------- Web3 setup ----------
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
-# polygon sometimes requires the POA middleware for some providers
-w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+# ---------- Constants ----------
+MAX_UINT = 2**256 - 1
+GAS_LIMIT_APPROVE = 100_000
+GAS_LIMIT_SWAP = 600_000
+GAS_PRICE_LIMIT = 300 * (10**9)  # 300 gwei cap (skip tx if higher)
 
 # ---------- Minimal ABIs ----------
 ERC20_ABI = [
@@ -169,36 +121,6 @@ ERC20_ABI = [
     },
 ]
 
-
-
-
-# QuickSwap/UniswapV2 Router minimal ABI
-ROUTER_ABI = [
-        {"inputs":[{"internalType":"address","name":"_factory","type":"address"},{"internalType":"address","name":"_WETH","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name":"WETH","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint256","name":"amountADesired","type":"uint256"},{"internalType":"uint256","name":"amountBDesired","type":"uint256"},{"internalType":"uint256","name":"amountAMin","type":"uint256"},{"internalType":"uint256","name":"amountBMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"addLiquidity","outputs":[{"internalType":"uint256","name":"amountA","type":"uint256"},{"internalType":"uint256","name":"amountB","type":"uint256"},{"internalType":"uint256","name":"liquidity","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"amountTokenDesired","type":"uint256"},{"internalType":"uint256","name":"amountTokenMin","type":"uint256"},{"internalType":"uint256","name":"amountETHMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"addLiquidityETH","outputs":[{"internalType":"uint256","name":"amountToken","type":"uint256"},{"internalType":"uint256","name":"amountETH","type":"uint256"},{"internalType":"uint256","name":"liquidity","type":"uint256"}],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"factory","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOut","type":"uint256"},{"internalType":"uint256","name":"reserveIn","type":"uint256"},{"internalType":"uint256","name":"reserveOut","type":"uint256"}],"name":"getAmountIn","outputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"}],"stateMutability":"pure","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"reserveIn","type":"uint256"},{"internalType":"uint256","name":"reserveOut","type":"uint256"}],"name":"getAmountOut","outputs":[{"internalType":"uint256","name":"amountOut","type":"uint256"}],"stateMutability":"pure","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOut","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"}],"name":"getAmountsIn","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"}],"name":"getAmountsOut","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountA","type":"uint256"},{"internalType":"uint256","name":"reserveA","type":"uint256"},{"internalType":"uint256","name":"reserveB","type":"uint256"}],"name":"quote","outputs":[{"internalType":"uint256","name":"amountB","type":"uint256"}],"stateMutability":"pure","type":"function"},{"inputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountAMin","type":"uint256"},{"internalType":"uint256","name":"amountBMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"removeLiquidity","outputs":[{"internalType":"uint256","name":"amountA","type":"uint256"},{"internalType":"uint256","name":"amountB","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountTokenMin","type":"uint256"},{"internalType":"uint256","name":"amountETHMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"removeLiquidityETH","outputs":[{"internalType":"uint256","name":"amountToken","type":"uint256"},{"internalType":"uint256","name":"amountETH","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountTokenMin","type":"uint256"},{"internalType":"uint256","name":"amountETHMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"removeLiquidityETHSupportingFeeOnTransferTokens","outputs":[{"internalType":"uint256","name":"amountETH","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountTokenMin","type":"uint256"},{"internalType":"uint256","name":"amountETHMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"},{"internalType":"bool","name":"approveMax","type":"bool"},{"internalType":"uint8","name":"v","type":"uint8"},{"internalType":"bytes32","name":"r","type":"bytes32"},{"internalType":"bytes32","name":"s","type":"bytes32"}],"name":"removeLiquidityETHWithPermit","outputs":[{"internalType":"uint256","name":"amountToken","type":"uint256"},{"internalType":"uint256","name":"amountETH","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountTokenMin","type":"uint256"},{"internalType":"uint256","name":"amountETHMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"},{"internalType":"bool","name":"approveMax","type":"bool"},{"internalType":"uint8","name":"v","type":"uint8"},{"internalType":"bytes32","name":"r","type":"bytes32"},{"internalType":"bytes32","name":"s","type":"bytes32"}],"name":"removeLiquidityETHWithPermitSupportingFeeOnTransferTokens","outputs":[{"internalType":"uint256","name":"amountETH","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"tokenA","type":"address"},{"internalType":"address","name":"tokenB","type":"address"},{"internalType":"uint256","name":"liquidity","type":"uint256"},{"internalType":"uint256","name":"amountAMin","type":"uint256"},{"internalType":"uint256","name":"amountBMin","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"},{"internalType":"bool","name":"approveMax","type":"bool"},{"internalType":"uint8","name":"v","type":"uint8"},{"internalType":"bytes32","name":"r","type":"bytes32"},{"internalType":"bytes32","name":"s","type":"bytes32"}],"name":"removeLiquidityWithPermit","outputs":[{"internalType":"uint256","name":"amountA","type":"uint256"},{"internalType":"uint256","name":"amountB","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOut","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapETHForExactTokens","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactETHForTokens","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactETHForTokensSupportingFeeOnTransferTokens","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactTokensForETH","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactTokensForETHSupportingFeeOnTransferTokens","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactTokensForTokens","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountIn","type":"uint256"},{"internalType":"uint256","name":"amountOutMin","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapExactTokensForTokensSupportingFeeOnTransferTokens","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOut","type":"uint256"},{"internalType":"uint256","name":"amountInMax","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapTokensForExactETH","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amountOut","type":"uint256"},{"internalType":"uint256","name":"amountInMax","type":"uint256"},{"internalType":"address[]","name":"path","type":"address[]"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}],"name":"swapTokensForExactTokens","outputs":[{"internalType":"uint256[]","name":"amounts","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"stateMutability":"payable","type":"receive"}
-]
-
-usdt = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)
-wmatic = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)
-router = w3.eth.contract(address=ROUTER_ADDR, abi=ROUTER_ABI)
-
-
-
-# ---------- Logging ----------
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
-
-# ---------- Token Balance Helper ----------
-def get_token_balance(token_contract, wallet_address):
-    """Return the token balance (converted from wei to float)."""
-    try:
-        decimals = token_contract.functions.decimals().call()
-        raw_balance = token_contract.functions.balanceOf(wallet_address).call()
-        return raw_balance / (10 ** decimals)
-    except Exception as e:
-        logging.warning(f"Failed to get balance for {token_contract.address[:6]}...: {e}")
-        return 0.0
-
-
-
 # ---------- Utility helpers ----------
 def to_decimals(amount: float, decimals: int) -> int:
     return int(Decimal(amount) * (10 ** decimals))
@@ -222,70 +144,6 @@ def get_safe_gas_price(multiplier=1.20, max_gwei=300, min_gwei=30):
     boosted = max(boosted, Web3.to_wei(min_gwei, 'gwei'))  # avoid tx stuck at 1 gwei
     return min(boosted, Web3.to_wei(max_gwei, 'gwei'))
 
-
-def send_tx(tx):
-    """Sign and broadcast transaction safely with nonce + gas checks and retry-on-underpriced."""
-
-    # ---- initial gas params ----
-    g_params = gas_params()
-    if g_params is None:
-        logging.warning("⏳ Transaction skipped due to high gas.")
-        return None
-
-    tx.update(g_params)
-
-    # ---- build + sign initial tx ----
-    signed = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
-    raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
-    if raw is None:
-        raise AttributeError("Web3 signed transaction missing raw transaction field.")
-
-    try:
-        # ---- try first broadcast ----
-        tx_hash = w3.eth.send_raw_transaction(raw)
-        logging.info(f"✅ TX sent: {tx_hash.hex()}")
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
-        return tx_hash.hex()
-
-    except ValueError as e:
-        err = str(e)
-
-        # ---- detect underpriced or low gas price ----
-        if ("underpriced" in err or 
-            "replacement transaction underpriced" in err or
-            "fee too low" in err or
-            "max fee per gas less than block base fee" in err):
-
-            logging.warning("⚠️ Gas underpriced — retrying with higher gas...")
-
-            # Increase only gasPrice in your gas_params()
-            retry_params = gas_params()
-            if retry_params:
-                # +40% bump
-                retry_params["gasPrice"] = int(retry_params["gasPrice"] * 1.40)
-
-                tx.update(retry_params)
-                signed_retry = w3.eth.account.sign_transaction(tx, PRIVATE_KEY)
-                raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
-
-                try:
-                    tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
-                    logging.info(f"🔄 Retry TX sent: {tx_hash_retry.hex()}")
-                    receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry)
-                    logging.info(f"🧾 Retry TX confirmed in block {receipt.blockNumber}")
-                    return tx_hash_retry.hex()
-
-                except Exception as e2:
-                    logging.error(f"❌ Retry failed: {e2}")
-                    return None
-
-        # ---- unknown error ----
-        logging.error(f"❌ TX failed: {e}")
-        return None
-
-
-
 def gas_params():
     """Dynamic gas settings with ceiling control"""
     g = get_safe_gas_price()
@@ -293,6 +151,211 @@ def gas_params():
         logging.warning(f"⚠️ Gas too high ({g/1e9:.1f} gwei), skipping transaction attempt.")
         return None
     return {"gasPrice": g, "chainId": w3.eth.chain_id}
+
+def get_allowance(token_contract, owner, spender):
+    """Check token allowance for router"""
+    try:
+        allowance = token_contract.functions.allowance(owner, spender).call()
+        return allowance
+    except Exception as e:
+        logging.warning(f"Failed to check allowance: {e}")
+        return 0
+
+# ---------- Approve helper (expects amount in raw units, i.e. "wei/uint") ----------
+def approve_if_needed(token_contract, spender, amount_wei):
+    """
+    Ensure router has allowance >= amount_wei for token_contract.
+    - token_contract: web3 Contract (ERC20)
+    - spender: router address
+    - amount_wei: amount in token's smallest unit (int)
+    Returns True on success, False on failure.
+    """
+    try:
+        allowance = token_contract.functions.allowance(OWNER, spender).call()
+        if allowance >= int(amount_wei):
+            logging.info(f"✅ Sufficient allowance ({allowance}) — no approval needed.")
+            return True
+
+        logging.info(f"🔐 Approving router {spender} to spend token {token_contract.address} (MAX_UINT).")
+        tx = token_contract.functions.approve(spender, MAX_UINT).build_transaction({
+            "from": OWNER,
+            "nonce": get_nonce(),
+            "gas": GAS_LIMIT_APPROVE,
+            **(gas_params() or {})
+        })
+
+        tx_hash = send_tx(tx)
+        if not tx_hash:
+            logging.warning("⚠️ Approval transaction failed or skipped.")
+            return False
+
+        # wait for receipt (best-effort)
+        try:
+            w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        except Exception:
+            logging.warning("⚠️ Approval tx did not confirm quickly; continuing and relying on on-chain state check later.")
+        # verify allowance again
+        new_allow = token_contract.functions.allowance(OWNER, spender).call()
+        if new_allow >= int(amount_wei):
+            logging.info("✅ Approval confirmed on-chain.")
+            return True
+        logging.error("❌ Approval not reflected on-chain after tx.")
+        return False
+
+    except Exception as exc:
+        logging.exception("❌ approve_if_needed() error:")
+        return False
+
+
+# ---------- Safe swap with proper input-token approval & retry ----------
+def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline):
+    """
+    Swap with:
+     - dynamic approval of path[0] token,
+     - gas ceiling guard via gas_params(),
+     - up to 3 attempts with gas bump.
+    Expects amount_in to be integer (raw units).
+    """
+    MAX_ATTEMPTS = 3
+    GAS_BUMP = 1.20  # 20% per retry
+
+    # quick gas guard
+    if gas_params() is None:
+        logging.warning("⏳ Gas too high — skipping swap.")
+        return None
+
+    # build contract object for input token (path[0])
+    input_addr = path[0]
+    input_token = w3.eth.contract(address=input_addr, abi=ERC20_ABI)
+
+    # Ensure approval of input token for router
+    ok = approve_if_needed(input_token, ROUTER_ADDR, int(amount_in))
+    if not ok:
+        logging.error("❌ Approval for input token failed, aborting swap.")
+        return None
+
+    # Attempt the swap, increasing gas each retry
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            params = gas_params()
+            if params is None:
+                logging.warning("⏳ Gas too high now — aborting swap attempt.")
+                return None
+
+            # apply gas bump for retry attempts
+            if attempt > 1:
+                # multiply gasPrice from fresh gas_params() snapshot to avoid stale values
+                params["gasPrice"] = int(params["gasPrice"] * (GAS_BUMP ** (attempt - 1)))
+
+            tx = router.functions.swapExactTokensForTokens(
+                int(amount_in),
+                int(amount_out_min),
+                path,
+                to,
+                int(deadline)
+            ).build_transaction({
+                "from": OWNER,
+                "nonce": get_nonce(),
+                "gas": GAS_LIMIT_SWAP,
+                **params
+            })
+
+            tx_hash = send_tx(tx)
+            if tx_hash:
+                logging.info(f"✅ Swap succeeded (attempt {attempt}): {tx_hash}")
+                return tx_hash
+
+            logging.warning(f"⚠️ swap call returned None on attempt {attempt}, retrying...")
+
+        except Exception as e:
+            # inspect error string to decide whether to retry
+            em = str(e).lower()
+            logging.warning(f"⚠️ Swap attempt {attempt} raised: {e}")
+            retryable = False
+            for token in ("underpriced", "replacement transaction", "nonce", "fee too low", "max fee per gas", "transfer_from_failed", "execution reverted"):
+                if token in em:
+                    retryable = True
+                    break
+
+            if not retryable:
+                logging.error("❌ Non-retryable swap error, aborting.", exc_info=True)
+                return None
+
+            # retryable -> small sleep then continue to next attempt
+            time.sleep(1 + attempt)
+            continue
+
+    logging.error("❌ Swap failed after max attempts.")
+    return None
+
+
+# ---------- send_tx with retry-on-underpriced / gas-bump ----------
+def send_tx(tx, max_retries=2, gas_bump=1.4):
+    """
+    Sign & broadcast tx. If node rejects as underpriced, attempt a retry with bumped gasPrice.
+    Returns tx_hash hex string or None.
+    """
+    # initial gas check
+    params = gas_params()
+    if params is None:
+        logging.warning("⏳ Transaction skipped due to high gas.")
+        return None
+
+    # merge params into tx copy so we don't mutate caller's object unexpectedly
+    tx_local = tx.copy()
+    tx_local.update(params)
+
+    # sign
+    signed = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+    raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
+    if raw is None:
+        raise AttributeError("Web3 signed transaction missing raw transaction field.")
+
+    try:
+        tx_hash = w3.eth.send_raw_transaction(raw)
+        logging.info(f"✅ TX sent: {tx_hash.hex()}")
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
+        return tx_hash.hex()
+
+    except ValueError as e:
+        err_s = str(e).lower()
+        retryable = any(k in err_s for k in ["underpriced", "replacement transaction", "fee too low", "max fee per gas"])
+        if not retryable:
+            logging.error(f"❌ send_tx ValueError (not retryable): {e}")
+            return None
+
+        logging.warning("⚠️ send_tx detected underpriced/replacement error — attempting retries with bumped gasPrice.")
+        for i in range(1, max_retries + 1):
+            try:
+                new_params = gas_params()
+                if new_params is None:
+                    logging.warning("⏳ Gas too high for retry; aborting.")
+                    return None
+                new_params["gasPrice"] = int(new_params["gasPrice"] * (gas_bump ** i))
+                # update tx_local with bumped gas and fresh nonce
+                tx_local.update({"nonce": get_nonce(), **new_params})
+                signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+                raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
+                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
+                logging.info(f"🔄 Retry TX sent: {tx_hash_retry.hex()}")
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry)
+                logging.info(f"🧾 Retry TX confirmed in block {receipt.blockNumber}")
+                return tx_hash_retry.hex()
+
+            except Exception as e2:
+                logging.warning(f"⚠️ Retry {i} failed: {e2}")
+                time.sleep(1 + i)
+                continue
+
+        logging.error("❌ All send_tx retries failed.")
+        return None
+
+    except Exception as e:
+        logging.exception("❌ send_tx unexpected error:")
+        return None
+
+
 
 # ============================================================
 # FETCH PRICE HISTORY (OKX public API)
@@ -409,6 +472,7 @@ def ai_buy_signal():
         return False
 
 # ---------- Trading logic / position tracking ----------
+
 @dataclass
 class Position:
     lots_alloc: List[int] = field(default_factory=lambda: [1,1,2,3])  # sums to 7
@@ -440,17 +504,7 @@ def get_onchain_token_balance(token_contract, address):
     except Exception as e:
         logging.exception("Failed to read on-chain token balance.")
         return 0.0
-
-def get_matic_price_from_coingecko():
-    # quick price retrieval for WMATIC vs USDT (using CoinGecko simple price)
-    try:
-        r = requests.get("https://api.coingecko.com/api/v3/simple/price", params={"ids":"matic-network","vs_currencies":"usd"}, timeout=10)
-        r.raise_for_status()
-        p = r.json().get("matic-network", {}).get("usd", None)
-        return float(p) if p else None
-    except Exception:
-        return None
-
+		
 def get_pol_price_from_okx():
     """
     Fetch latest POL/USDT price directly from OKX public API.
@@ -475,87 +529,12 @@ def get_pol_price_from_okx():
         logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
         return None
 
-
 def estimate_amounts_out(amount_in, path):
     try:
         amounts = router.functions.getAmountsOut(int(amount_in), path).call()
         return amounts
     except Exception:
         return None
-
-def get_allowance(token_contract, owner, spender):
-    """Check token allowance for router"""
-    try:
-        allowance = token_contract.functions.allowance(owner, spender).call()
-        return allowance
-    except Exception as e:
-        logging.warning(f"Failed to check allowance: {e}")
-        return 0
-
-def approve_if_needed(token_contract, spender, amount):
-    """
-    Approve router to spend token if allowance < required amount.
-    Approves MAX_UINT once to avoid repeated approvals.
-    """
-    try:
-        allowance = get_allowance(token_contract, OWNER, spender)
-        decimals = token_contract.functions.decimals().call()
-        amount_wei = int(Decimal(amount) * (10 ** decimals))
-
-        if allowance >= amount_wei:
-            logging.info(f"✅ Sufficient allowance ({allowance/(10**decimals):.2f}), no approval needed.")
-            return True
-
-        logging.info(f"🔐 Approving {spender[:8]}... for {token_contract.address[:8]} (MAX_UINT).")
-        tx = token_contract.functions.approve(spender, MAX_UINT).build_transaction({
-            "from": OWNER,
-            "nonce": get_nonce(),
-            "gas": GAS_LIMIT_APPROVE,
-            **(gas_params() or {})
-        })
-
-        tx_hash = send_tx(tx)
-        if tx_hash:
-            logging.info(f"✅ Approval successful: {tx_hash}")
-            return True
-        else:
-            logging.warning("⚠️ Approval skipped or failed.")
-            return False
-
-    except Exception as e:
-        logging.error(f"❌ Approval error: {e}", exc_info=True)
-        return False
-
-def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline):
-    """Perform token swap with gas ceiling and allowance safety"""
-    if gas_params() is None:
-        logging.warning("⏳ Gas too high, skipping swap.")
-        return None
-
-    try:
-        # Ensure approval first
-        if not approve_if_needed(usdt, ROUTER_ADDR, amount_in):
-            logging.warning("❌ Swap aborted — approval failed.")
-            return None
-
-        tx = router.functions.swapExactTokensForTokens(
-            int(amount_in),
-            int(amount_out_min),
-            path,
-            to,
-            deadline
-        ).build_transaction({
-            "from": OWNER,
-            "nonce": get_nonce(),
-            "gas": GAS_LIMIT_SWAP,
-            **(gas_params() or {})
-        })
-
-        return send_tx(tx)
-    except Exception as e:
-        logging.error(f"❌ Swap failed: {e}", exc_info=True)
-        return None
-
 
 def swap_usdt_to_wmatic(amount_usdt):
     """Swap USDT → WMATIC safely using allowance + gas guard"""
@@ -583,50 +562,22 @@ def swap_usdt_to_wmatic(amount_usdt):
         return None
 
 
-
 def swap_wmatic_to_usdt(amount_wmatic):
-    """Swap WMATIC → USDT safely using allowance, balance, and slippage guard."""
+    """Swap WMATIC → USDT safely using allowance + gas guard"""
     try:
         if amount_wmatic <= 0:
             logging.warning("⚠️ swap_wmatic_to_usdt called with zero or negative amount.")
             return None
 
-        # Convert to ERC20 decimals
-        amount_in = int(Decimal(amount_wmatic) * (10 ** 18))  # WMATIC = 18 decimals
-
-        # --- 1) Check WMATIC ERC20 balance ---
-        bal = wmatic.functions.balanceOf(OWNER).call()
-        if bal < amount_in:
-            logging.error(f"❌ WMATIC balance too low: have {bal}, need {amount_in}")
-            return None
-
-        # --- 2) Ensure allowance is sufficient ---
-        allowance = wmatic.functions.allowance(OWNER, ROUTER_ADDR).call()
-        if allowance < amount_in:
-            logging.info(f"🔄 Allowance too low ({allowance}), approving {amount_in}...")
-            try:
-                approve_hash = approve_if_needed(wmatic, ROUTER_ADDR)
-                if approve_hash:
-                    w3.eth.wait_for_transaction_receipt(approve_hash)
-            except Exception as e:
-                logging.error(f"❌ Approval failed: {e}")
-                return None
-
-        # --- 3) Prepare swap parameters ---
+        amount_in = int(Decimal(amount_wmatic) * (10 ** 18))  # WMATIC decimals = 18
         path = [WMATIC_ADDR, USDT_ADDR]
-        deadline = int(time.time()) + 600  # 10 minutes
-
-        # --- 4) Auto slippage buffer ---
-        # amount_out_min = 0 is dangerous during volatility.
-        # Use a safe fallback (router quoting may be inside safe_swap).
-        amount_out_min = 0  # keep default, your safe_swap handles quoting + slippage
+        deadline = int(time.time()) + 600
 
         logging.info(f"🔁 Swapping {amount_wmatic:.4f} WMATIC → USDT ...")
 
-        # --- 5) Perform swap using your safe wrapper ---
         return safe_swap_exact_tokens_for_tokens(
             amount_in=amount_in,
-            amount_out_min=amount_out_min,
+            amount_out_min=0,
             path=path,
             to=OWNER,
             deadline=deadline
@@ -636,102 +587,4 @@ def swap_wmatic_to_usdt(amount_wmatic):
         logging.error(f"❌ swap_wmatic_to_usdt failed: {e}", exc_info=True)
         return None
 
-
-
-# ---------- Main bot behavior ----------
-def main_loop(poll_interval=60):
-    logging.info("Starting DEX Grid Bot main loop...")
-    in_position = False
-    position: Optional[Position] = None
-    while True:
-        try:
-            # 1) If not in position: check AI signal
-            if not in_position:
-                logging.info("Checking AI BUY signal...")
-                buy_signal = ai_buy_signal()
-                usdt_balance_onchain = get_onchain_token_balance(usdt, OWNER)
-                logging.info(f"USDT balance: {usdt_balance_onchain:.6f}")
-                if buy_signal and usdt_balance_onchain > 5:  # require min balance
-                    # initialize position
-                    lot_values = [1,1,2,3]
-                    lot_total_units = sum(lot_values)  # 7
-                    lot_size = usdt_balance_onchain / lot_total_units
-                    position = Position(lots_alloc=lot_values, lot_size_usdt=lot_size)
-                    logging.info(f"BUY signal accepted. Starting initial buy: lot_size={lot_size:.6f} USDT")
-                    # execute initial buy (first lot)
-                    logging.info("Executing initial buy (1 lot)...")
-                    swap_usdt_to_wmatic(lot_size)
-                    # read WMATIC balance diff to estimate amount bought
-                    # For simplicity: read current WMATIC balance (assumes zero before)
-                    wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
-                    position.buy_prices.append(get_pol_price_from_okx() or 0.0)
-                    position.amounts_wmatic.append(wmatic_bal) # crude: in practice compute exact amount
-                    position.total_usdt_spent += lot_size
-                    in_position = True
-                    logging.info(f"Position opened. WMATIC balance approx: {wmatic_bal:.6f}")
-                else:
-                    logging.info("No buy signal or insufficient USDT. Sleeping.")
-            else:
-                # in position: monitor grid and check for DCA triggers and TP
-                price = get_pol_price_from_okx()
-                if price is None:
-                    logging.warning("Couldn't fetch price; skipping cycle.")
-                    time.sleep(poll_interval)
-                    continue
-                logging.info(f"Current WMATIC price (USD): {price:.6f}")
-                # compute profit percent
-                profit_pct = position.realized_profit_pct(price)
-                logging.info(f"Unrealized profit: {profit_pct:.4f}%")
-                if profit_pct >= 1.5:  # close condition
-                    logging.info("Profit threshold reached -> closing position (swap WMATIC -> USDT)")
-                    total_wmatic = get_onchain_token_balance(wmatic, OWNER)
-                    if total_wmatic > 0:
-                        swap_wmatic_to_usdt(total_wmatic)
-                    # reset
-                    in_position = False
-                    position = None
-                    logging.info("Position closed. Will scan for next buy.")
-                else:
-                    # DCA triggers: check if price dropped relative to last executed buy price
-                    last_price = position.buy_prices[-1] if position.buy_prices else position.buy_prices.append(price) or price
-                    # grid triggers percentages
-                    triggers = [-0.03, -0.10, -0.25]  # relative drops from previous order
-                    for idx, trig in enumerate(triggers, start=1):
-                        # only if we haven't executed that grid step yet (length control)
-                        if len(position.amounts_wmatic) <= idx:
-                            target_price = last_price * (1 + trig)
-                            logging.info(f"Grid check idx={idx}: target_price={target_price:.6f} (current {price:.6f})")
-                            if price <= target_price:
-                                lot_to_buy = position.lots_alloc[idx]
-                                amount_usdt = lot_to_buy * position.lot_size_usdt
-                                logging.info(f"Trigger met for grid idx {idx}. Buying {lot_to_buy} lots => {amount_usdt:.6f} USDT")
-                                swap_usdt_to_wmatic(amount_usdt)
-                                # estimate new WMATIC delta by reading onchain balance and subtracting prior recorded
-                                new_wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
-                                delta = new_wmatic_bal - sum(position.amounts_wmatic)
-                                if delta <= 0:
-                                    logging.warning("Unable to detect WMATIC delta after swap; recording approximate amount via estimate.")
-                                    # estimate via getAmountsOut
-                                    dec_usdt = get_token_decimals(usdt)
-                                    amt_in = to_decimals(amount_usdt, dec_usdt)
-                                    est = estimate_amounts_out(amt_in, [USDT_ADDR, WMATIC_ADDR])
-                                    if est:
-                                        delta = from_decimals(est[-1], get_token_decimals(wmatic))
-                                position.amounts_wmatic.append(delta)
-                                position.buy_prices.append(price)
-                                position.total_usdt_spent += amount_usdt
-                                last_price = price
-                                break  # after a DCA, re-evaluate on next cycle
-                    # else no DCA triggered this loop
-            # sleep before next poll
-            time.sleep(poll_interval)
-        except Exception as exc:
-            logging.exception("Main loop error, will continue after short sleep.")
-            time.sleep(10)
-
-if __name__ == "__main__":
-    try:
-        main_loop(poll_interval=60)
-    except KeyboardInterrupt:
-        logging.info("Exiting on user interrupt.")
 

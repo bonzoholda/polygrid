@@ -75,7 +75,12 @@ def grid_dca_loop(poll_interval=60):
                     position = Position(lots_alloc=lot_values, lot_size_usdt=lot_size)
 
                     logging.info(f"🟢 BUY signal accepted. Executing initial buy: {lot_size:.6f} USDT")
-                    swap_usdt_to_wmatic(lot_size)
+                    
+                    success = swap_usdt_to_wmatic(lot_size)
+
+                    if not success:
+                        logging.warning("⚠️ BUY not executed — keeping position closed.")
+                        return  # or continue loop safely
 
                     wmatic_bal = get_onchain_token_balance(wmatic, OWNER)
                     price_now = get_pol_price_from_okx() or 0.0
@@ -83,7 +88,7 @@ def grid_dca_loop(poll_interval=60):
                     position.amounts_wmatic.append(wmatic_bal)
                     position.total_usdt_spent += lot_size
                     in_position = True
-                    logging.info(f"Position opened. WMATIC balance: {wmatic_bal:.6f}")
+                    logging.info(f"🔓 Position opened. WMATIC balance: {wmatic_bal:.6f}")
                 else:
                     logging.info("No buy signal or insufficient USDT. Sleeping.")
                     time.sleep(poll_interval)

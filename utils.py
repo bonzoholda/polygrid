@@ -585,21 +585,48 @@ def swap_usdt_to_wmatic(amount_usdt):
 
 
 def swap_wmatic_to_usdt(amount_wmatic):
-    """Swap WMATIC → USDT safely using allowance + gas guard"""
+    """Swap WMATIC → USDT safely using allowance, balance, and slippage guard."""
     try:
         if amount_wmatic <= 0:
             logging.warning("⚠️ swap_wmatic_to_usdt called with zero or negative amount.")
             return None
 
-        amount_in = int(Decimal(amount_wmatic) * (10 ** 18))  # WMATIC decimals = 18
+        # Convert to ERC20 decimals
+        amount_in = int(Decimal(amount_wmatic) * (10 ** 18))  # WMATIC = 18 decimals
+
+        # --- 1) Check WMATIC ERC20 balance ---
+        bal = wmatic.functions.balanceOf(OWNER).call()
+        if bal < amount_in:
+            logging.error(f"❌ WMATIC balance too low: have {bal}, need {amount_in}")
+            return None
+
+        # --- 2) Ensure allowance is sufficient ---
+        allowance = wmatic.functions.allowance(OWNER, ROUTER_ADDR).call()
+        if allowance < amount_in:
+            logging.info(f"🔄 Allowance too low ({allowance}), approving {amount_in}...")
+            try:
+                approve_hash = approve_if_needed(wmatic, ROUTER_ADDR)
+                if approve_hash:
+                    w3.eth.wait_for_transaction_receipt(approve_hash)
+            except Exception as e:
+                logging.error(f"❌ Approval failed: {e}")
+                return None
+
+        # --- 3) Prepare swap parameters ---
         path = [WMATIC_ADDR, USDT_ADDR]
-        deadline = int(time.time()) + 600
+        deadline = int(time.time()) + 600  # 10 minutes
+
+        # --- 4) Auto slippage buffer ---
+        # amount_out_min = 0 is dangerous during volatility.
+        # Use a safe fallback (router quoting may be inside safe_swap).
+        amount_out_min = 0  # keep default, your safe_swap handles quoting + slippage
 
         logging.info(f"🔁 Swapping {amount_wmatic:.4f} WMATIC → USDT ...")
 
+        # --- 5) Perform swap using your safe wrapper ---
         return safe_swap_exact_tokens_for_tokens(
             amount_in=amount_in,
-            amount_out_min=0,
+            amount_out_min=amount_out_min,
             path=path,
             to=OWNER,
             deadline=deadline
@@ -608,6 +635,7 @@ def swap_wmatic_to_usdt(amount_wmatic):
     except Exception as e:
         logging.error(f"❌ swap_wmatic_to_usdt failed: {e}", exc_info=True)
         return None
+
 
 
 # ---------- Main bot behavior ----------

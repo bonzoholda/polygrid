@@ -207,17 +207,21 @@ def approve_if_needed(token_contract, spender, amount_wei):
         return False
 
 
-# ---------- Safe swap with proper input-token approval & retry ----------
+# ---------- Safe swap with auto slippage-increase + retry ----------
 def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline):
     """
     Swap with:
-     - dynamic approval of path[0] token,
-     - gas ceiling guard via gas_params(),
-     - up to 3 attempts with gas bump.
-    Expects amount_in to be integer (raw units).
+     - dynamic approval,
+     - gas ceiling guard,
+     - retry with gas bump,
+     - retry with slippage expansion (lower amount_out_min).
     """
     MAX_ATTEMPTS = 3
-    GAS_BUMP = 1.20  # 20% per retry
+    GAS_BUMP = 1.20  # 20%/retry
+    SLIPPAGE_STEPS = [1.00, 0.98, 0.95]  
+    # attempt 1: 100% (no change)
+    # attempt 2: 98% of original amount_out_min  -> +2% slippage
+    # attempt 3: 95% of original amount_out_min  -> +5% slippage
 
     # quick gas guard
     if gas_params() is None:
@@ -234,22 +238,30 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
         logging.error("❌ Approval for input token failed, aborting swap.")
         return None
 
-    # Attempt the swap, increasing gas each retry
+    # retry loop
     for attempt in range(1, MAX_ATTEMPTS + 1):
+
+        # ------------ Dynamic slippage expansion (minOut reduction) ------------
+        adj_amount_out_min = int(amount_out_min * SLIPPAGE_STEPS[attempt - 1])
+        if attempt > 1:
+            logging.warning(
+                f"🔁 Increasing slippage for swap attempt {attempt}: "
+                f"minOut {amount_out_min} → {adj_amount_out_min}"
+            )
+
         try:
             params = gas_params()
             if params is None:
                 logging.warning("⏳ Gas too high now — aborting swap attempt.")
                 return None
 
-            # apply gas bump for retry attempts
+            # bump gas on retry
             if attempt > 1:
-                # multiply gasPrice from fresh gas_params() snapshot to avoid stale values
                 params["gasPrice"] = int(params["gasPrice"] * (GAS_BUMP ** (attempt - 1)))
 
             tx = router.functions.swapExactTokensForTokens(
                 int(amount_in),
-                int(amount_out_min),
+                int(adj_amount_out_min),  # 👈 UPDATED with dynamic slippage
                 path,
                 to,
                 int(deadline)
@@ -265,14 +277,25 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
                 logging.info(f"✅ Swap succeeded (attempt {attempt}): {tx_hash}")
                 return tx_hash
 
-            logging.warning(f"⚠️ swap call returned None on attempt {attempt}, retrying...")
+            logging.warning(f"⚠️ swap returned None (attempt {attempt}), retrying...")
 
         except Exception as e:
-            # inspect error string to decide whether to retry
             em = str(e).lower()
-            logging.warning(f"⚠️ Swap attempt {attempt} raised: {e}")
+            logging.warning(f"⚠️ Swap attempt {attempt} failed: {e}")
+
+            # retryable errors (includes insufficient output)
             retryable = False
-            for token in ("underpriced", "replacement transaction", "nonce", "fee too low", "max fee per gas", "transfer_from_failed", "execution reverted"):
+            retry_tokens = (
+                "insufficient output amount",
+                "underpriced",
+                "replacement transaction",
+                "nonce",
+                "fee too low",
+                "max fee per gas",
+                "transfer_from_failed",
+                "execution reverted"
+            )
+            for token in retry_tokens:
                 if token in em:
                     retryable = True
                     break
@@ -281,12 +304,13 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
                 logging.error("❌ Non-retryable swap error, aborting.", exc_info=True)
                 return None
 
-            # retryable -> small sleep then continue to next attempt
+            # wait before next retry
             time.sleep(1 + attempt)
             continue
 
-    logging.error("❌ Swap failed after max attempts.")
+    logging.error("❌ Swap failed after maximum attempts.")
     return None
+
 
 
 # ---------- send_tx with retry-on-underpriced / gas-bump ----------

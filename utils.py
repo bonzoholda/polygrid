@@ -23,6 +23,7 @@ MAX_UINT = 2**256 - 1
 GAS_LIMIT_APPROVE = 100_000
 GAS_LIMIT_SWAP = 600_000
 GAS_PRICE_LIMIT = 300 * (10**9)  # 300 gwei cap (skip tx if higher)
+RECEIPT_TIMEOUT = 300 # 5 minutes is a safer window for confirmation
 
 # ---------- Minimal ABIs ----------
 ERC20_ABI = [
@@ -191,7 +192,7 @@ def approve_if_needed(token_contract, spender, amount_wei):
 
         # wait for receipt (best-effort)
         try:
-            w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+            w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
         except Exception:
             logging.warning("⚠️ Approval tx did not confirm quickly; continuing and relying on on-chain state check later.")
         # verify allowance again
@@ -317,6 +318,9 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
 def send_tx(tx, max_retries=2, gas_bump=1.4):
     """
     Sign & broadcast tx. If node rejects as underpriced, attempt a retry with bumped gasPrice.
+    The receipt wait timeout is increased to 5 minutes to prevent TimeExhausted errors
+    due to slow confirmation during network congestion.
+    
     Returns tx_hash hex string or None.
     """
     # initial gas check
@@ -336,15 +340,21 @@ def send_tx(tx, max_retries=2, gas_bump=1.4):
         raise AttributeError("Web3 signed transaction missing raw transaction field.")
 
     try:
+        # --- PRIMARY ATTEMPT ---
         tx_hash = w3.eth.send_raw_transaction(raw)
         logging.info(f"✅ TX sent: {tx_hash.hex()}")
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        
+        # FIX: Explicitly set a longer timeout (300s) to avoid TimeExhausted error
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
+        
         logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
         return tx_hash.hex()
 
     except ValueError as e:
+        # Handle RPC rejections (underpriced, nonce conflicts)
         err_s = str(e).lower()
-        retryable = any(k in err_s for k in ["underpriced", "replacement transaction", "fee too low", "max fee per gas"])
+        retryable = any(k in err_s for k in ["underpriced", "replacement transaction", "fee too low", "max fee per gas", "nonce"])
+        
         if not retryable:
             logging.error(f"❌ send_tx ValueError (not retryable): {e}")
             return None
@@ -352,22 +362,31 @@ def send_tx(tx, max_retries=2, gas_bump=1.4):
         logging.warning("⚠️ send_tx detected underpriced/replacement error — attempting retries with bumped gasPrice.")
         for i in range(1, max_retries + 1):
             try:
+                # Get fresh gas params and bump gasPrice
                 new_params = gas_params()
                 if new_params is None:
                     logging.warning("⏳ Gas too high for retry; aborting.")
                     return None
+                
                 new_params["gasPrice"] = int(new_params["gasPrice"] * (gas_bump ** i))
-                # update tx_local with bumped gas and fresh nonce
+                
+                # update tx_local with bumped gas and fresh nonce for replacement TX
                 tx_local.update({"nonce": get_nonce(), **new_params})
+                
                 signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
                 raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
+                
                 tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
-                logging.info(f"🔄 Retry TX sent: {tx_hash_retry.hex()}")
-                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry)
+                logging.info(f"🔄 Retry TX sent (attempt {i}): {tx_hash_retry.hex()}")
+                
+                # FIX: Explicitly set a longer timeout for the retry TX as well
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
+                
                 logging.info(f"🧾 Retry TX confirmed in block {receipt.blockNumber}")
                 return tx_hash_retry.hex()
 
             except Exception as e2:
+                # Catch exceptions during retry, including TimeExhausted if new TX is also stuck
                 logging.warning(f"⚠️ Retry {i} failed: {e2}")
                 time.sleep(1 + i)
                 continue
@@ -376,6 +395,7 @@ def send_tx(tx, max_retries=2, gas_bump=1.4):
         return None
 
     except Exception as e:
+        # This catches the TimeExhausted and other unexpected errors
         logging.exception("❌ send_tx unexpected error:")
         return None
 

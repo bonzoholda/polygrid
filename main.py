@@ -127,7 +127,7 @@ def grid_dca_loop(poll_interval=60):
             # --- 4. DCA Logic (AI + Grid Combo) ---
             ai_signal = ml_signal.generate_signal()
             last_price = position.buy_prices[-1]
-            triggers = [-0.03, -0.07, -0.15]
+            triggers = [-0.03, -0.09, -0.27]
 
             for idx, trig in enumerate(triggers, start=1):
                 if len(position.amounts_wmatic) <= idx:

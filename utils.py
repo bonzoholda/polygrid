@@ -22,7 +22,7 @@ load_dotenv()
 MAX_UINT = 2**256 - 1
 GAS_LIMIT_APPROVE = 100_000
 GAS_LIMIT_SWAP = 600_000
-GAS_PRICE_LIMIT = 300 * (10**9)  # 300 gwei cap (skip tx if higher)
+GAS_PRICE_LIMIT = 1500 * (10**9)  # 1500 gwei cap (skip tx if higher)
 RECEIPT_TIMEOUT = 300 # 5 minutes is a safer window for confirmation
 
 # ---------- Minimal ABIs ----------

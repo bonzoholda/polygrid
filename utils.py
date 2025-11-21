@@ -208,61 +208,80 @@ def approve_if_needed(token_contract, spender, amount_wei):
         return False
 
 
-# ---------- Safe swap with auto slippage-increase + retry ----------
+# ---------- safe_swap_exact_tokens_for_tokens (REPLACEMENT) ----------
 def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline):
     """
     Swap with:
-     - dynamic approval,
-     - gas ceiling guard,
-     - retry with gas bump,
-     - retry with slippage expansion (lower amount_out_min).
+      - dynamic approval,
+      - gas ceiling guard,
+      - retry with gas bump,
+      - progressive slippage expansion (if caller passed amount_out_min==0 we estimate expected out).
+    Returns tx_hash hex (string) on confirmed success, or None on failure/skip.
     """
     MAX_ATTEMPTS = 3
-    GAS_BUMP = 1.20  # 20%/retry
-    SLIPPAGE_STEPS = [1.00, 0.98, 0.95]  
-    # attempt 1: 100% (no change)
-    # attempt 2: 98% of original amount_out_min  -> +2% slippage
-    # attempt 3: 95% of original amount_out_min  -> +5% slippage
+    GAS_BUMP = 1.20  # 20% per retry
+    # multipliers applied to *expected* out to relax minOut progressively (1.00 -> 0.98 -> 0.95)
+    SLIPPAGE_STEPS = [1.00, 0.98, 0.95]
 
     # quick gas guard
     if gas_params() is None:
         logging.warning("⏳ Gas too high — skipping swap.")
         return None
 
-    # build contract object for input token (path[0])
     input_addr = path[0]
     input_token = w3.eth.contract(address=input_addr, abi=ERC20_ABI)
 
-    # Ensure approval of input token for router
-    ok = approve_if_needed(input_token, ROUTER_ADDR, int(amount_in))
-    if not ok:
+    # Ensure approval of input token for router (amount_in is raw units)
+    if not approve_if_needed(input_token, ROUTER_ADDR, int(amount_in)):
         logging.error("❌ Approval for input token failed, aborting swap.")
         return None
 
-    # retry loop
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    # If caller provided amount_out_min == 0, try to estimate expected output now
+    base_out = None
+    if int(amount_out_min) == 0:
+        try:
+            est = estimate_amounts_out(amount_in, path)
+            if est:
+                base_out = int(est[-1])
+                logging.info(f"🔍 Estimated expected out={base_out} (raw units)")
+            else:
+                logging.warning("⚠️ Could not estimate amountsOut; proceeding with amountOutMin=0 (riskier).")
+                base_out = 0
+        except Exception as e:
+            logging.warning("⚠️ estimate_amounts_out failed; proceeding with amountOutMin=0", exc_info=True)
+            base_out = 0
+    else:
+        base_out = int(amount_out_min)
 
-        # ------------ Dynamic slippage expansion (minOut reduction) ------------
-        adj_amount_out_min = int(amount_out_min * SLIPPAGE_STEPS[attempt - 1])
+    # Attempt loop
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        # compute adjusted amount_out_min (apply slippage multiplier to base_out)
+        try:
+            multiplier = SLIPPAGE_STEPS[min(attempt - 1, len(SLIPPAGE_STEPS) - 1)]
+            adj_amount_out_min = int(base_out * multiplier) if base_out else int(amount_out_min)
+        except Exception:
+            adj_amount_out_min = int(amount_out_min)
+
         if attempt > 1:
             logging.warning(
-                f"🔁 Increasing slippage for swap attempt {attempt}: "
-                f"minOut {amount_out_min} → {adj_amount_out_min}"
+                f"🔁 Swap retry attempt {attempt}: using minOut={adj_amount_out_min} (multiplier {multiplier})"
             )
 
+        params = gas_params()
+        if params is None:
+            logging.warning("⏳ Gas too high now — aborting swap attempt.")
+            return None
+
+        # bump gasPrice for retries
+        if attempt > 1:
+            params["gasPrice"] = int(params["gasPrice"] * (GAS_BUMP ** (attempt - 1)))
+            logging.info(f"⬆️ Bumped gasPrice for attempt {attempt}: {params['gasPrice']/1e9:.2f} gwei")
+
+        tx = None
         try:
-            params = gas_params()
-            if params is None:
-                logging.warning("⏳ Gas too high now — aborting swap attempt.")
-                return None
-
-            # bump gas on retry
-            if attempt > 1:
-                params["gasPrice"] = int(params["gasPrice"] * (GAS_BUMP ** (attempt - 1)))
-
             tx = router.functions.swapExactTokensForTokens(
                 int(amount_in),
-                int(adj_amount_out_min),  # 👈 UPDATED with dynamic slippage
+                int(adj_amount_out_min),
                 path,
                 to,
                 int(deadline)
@@ -272,132 +291,138 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
                 "gas": GAS_LIMIT_SWAP,
                 **params
             })
-
-            tx_hash = send_tx(tx)
-            if tx_hash:
-                logging.info(f"✅ Swap succeeded (attempt {attempt}): {tx_hash}")
-                return tx_hash
-
-            logging.warning(f"⚠️ swap returned None (attempt {attempt}), retrying...")
-
         except Exception as e:
-            em = str(e).lower()
-            logging.warning(f"⚠️ Swap attempt {attempt} failed: {e}")
-
-            # retryable errors (includes insufficient output)
-            retryable = False
-            retry_tokens = (
-                "insufficient output amount",
-                "underpriced",
-                "replacement transaction",
-                "nonce",
-                "fee too low",
-                "max fee per gas",
-                "transfer_from_failed",
-                "execution reverted"
-            )
-            for token in retry_tokens:
-                if token in em:
-                    retryable = True
-                    break
-
-            if not retryable:
-                logging.error("❌ Non-retryable swap error, aborting.", exc_info=True)
+            logging.warning(f"⚠️ Failed to build swap tx on attempt {attempt}: {e}", exc_info=True)
+            # If building tx fails with non-retryable error, abort
+            if "insufficient output amount" in str(e).lower():
+                # Allow retries that change slippage, else abort
+                pass
+            else:
                 return None
 
-            # wait before next retry
-            time.sleep(1 + attempt)
-            continue
+        # send and wait using send_tx (which itself will attempt replacement if underpriced)
+        try:
+            tx_hash = send_tx(tx)
+            if tx_hash:
+                logging.info(f"✅ Swap confirmed (attempt {attempt}): {tx_hash}")
+                return tx_hash
+            else:
+                logging.warning(f"⚠️ send_tx returned None on swap attempt {attempt}; will retry if attempts remain.")
+        except Exception as e:
+            logging.warning(f"⚠️ Exception during swap attempt {attempt}: {e}", exc_info=True)
+
+        # small backoff before next attempt
+        time.sleep(1 + attempt)
 
     logging.error("❌ Swap failed after maximum attempts.")
     return None
 
 
 
-# ---------- send_tx with retry-on-underpriced / gas-bump ----------
-def send_tx(tx, max_retries=2, gas_bump=1.4):
+# ---------- send_tx (REPLACEMENT) ----------
+def send_tx(tx, max_retries=2, gas_bump=1.25):
     """
-    Sign & broadcast tx. If node rejects as underpriced, attempt a retry with bumped gasPrice.
-    The receipt wait timeout is increased to 5 minutes to prevent TimeExhausted errors
-    due to slow confirmation during network congestion.
-    
-    Returns tx_hash hex string or None.
+    Sign & broadcast tx. If node rejects as underpriced or the tx times out waiting for receipt,
+    attempt conservative replacement retries with bumped gasPrice.
+    Returns tx_hash hex on confirmed success, otherwise None.
     """
-    # initial gas check
+    # first gas check
     params = gas_params()
     if params is None:
         logging.warning("⏳ Transaction skipped due to high gas.")
         return None
 
-    # merge params into tx copy so we don't mutate caller's object unexpectedly
+    # work on a local copy to avoid mutating caller object
     tx_local = tx.copy()
     tx_local.update(params)
 
-    # sign
+    # sign initial tx
     signed = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
     raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
     if raw is None:
         raise AttributeError("Web3 signed transaction missing raw transaction field.")
 
     try:
-        # --- PRIMARY ATTEMPT ---
         tx_hash = w3.eth.send_raw_transaction(raw)
-        logging.info(f"✅ TX sent: {tx_hash.hex()}")
-        
-        # FIX: Explicitly set a longer timeout (300s) to avoid TimeExhausted error
+        logging.info(f"✅ TX sent: {tx_hash.hex()} (waiting for receipt up to {RECEIPT_TIMEOUT}s)")
+        # wait for receipt
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
-        
         logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
         return tx_hash.hex()
 
     except ValueError as e:
-        # Handle RPC rejections (underpriced, nonce conflicts)
+        # RPC returned an immediate rejection (underpriced / replacement / nonce issues)
         err_s = str(e).lower()
         retryable = any(k in err_s for k in ["underpriced", "replacement transaction", "fee too low", "max fee per gas", "nonce"])
-        
+        logging.warning(f"⚠️ send_tx ValueError: {e} (retryable={retryable})")
         if not retryable:
-            logging.error(f"❌ send_tx ValueError (not retryable): {e}")
             return None
 
-        logging.warning("⚠️ send_tx detected underpriced/replacement error — attempting retries with bumped gasPrice.")
-        for i in range(1, max_retries + 1):
-            try:
-                # Get fresh gas params and bump gasPrice
-                new_params = gas_params()
-                if new_params is None:
-                    logging.warning("⏳ Gas too high for retry; aborting.")
-                    return None
-                
-                new_params["gasPrice"] = int(new_params["gasPrice"] * (gas_bump ** i))
-                
-                # update tx_local with bumped gas and fresh nonce for replacement TX
-                tx_local.update({"nonce": get_nonce(), **new_params})
-                
-                signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
-                raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
-                
-                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
-                logging.info(f"🔄 Retry TX sent (attempt {i}): {tx_hash_retry.hex()}")
-                
-                # FIX: Explicitly set a longer timeout for the retry TX as well
-                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
-                
-                logging.info(f"🧾 Retry TX confirmed in block {receipt.blockNumber}")
-                return tx_hash_retry.hex()
+        # Retry with replacement transactions (bump gas). Keep attempts small.
+        for attempt in range(1, max_retries + 1):
+            logging.info(f"🔁 send_tx replacement attempt {attempt}/{max_retries}")
+            new_params = gas_params()
+            if new_params is None:
+                logging.warning("⏳ Gas too high for retry; aborting retries.")
+                return None
 
+            # bump gas price
+            new_params["gasPrice"] = int(new_params["gasPrice"] * (gas_bump ** attempt))
+            # refresh nonce for replacement tx
+            new_nonce = get_nonce()
+            # update tx_local with fresh nonce and new gas settings
+            tx_local.update({"nonce": new_nonce, **new_params})
+            signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+            raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
+            if raw_retry is None:
+                logging.error("❌ signed retry missing raw tx")
+                return None
+
+            try:
+                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
+                logging.info(f"🔄 Replacement TX sent: {tx_hash_retry.hex()} (waiting for receipt up to {RECEIPT_TIMEOUT}s)")
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
+                logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
+                return tx_hash_retry.hex()
             except Exception as e2:
-                # Catch exceptions during retry, including TimeExhausted if new TX is also stuck
-                logging.warning(f"⚠️ Retry {i} failed: {e2}")
-                time.sleep(1 + i)
+                logging.warning(f"⚠️ Replacement attempt {attempt} failed: {e2}")
+                # small backoff then next attempt
+                time.sleep(1 + attempt)
                 continue
 
-        logging.error("❌ All send_tx retries failed.")
+        logging.error("❌ All replacement retries failed.")
         return None
 
     except Exception as e:
-        # This catches the TimeExhausted and other unexpected errors
-        logging.exception("❌ send_tx unexpected error:")
-        return None
+        # Either TimeExhausted waiting for receipt, or unexpected issue.
+        # If the initial send succeeded but wait timed out (TimeExhausted),
+        # try one replacement attempt with bumped gas to expedite confirmation.
+        # If that fails, return None (caller treats as failed).
+        import web3
+        if isinstance(e, web3._utils.threads.TimeExhausted) or "timeexhausted" in str(type(e)).lower() or "timeout" in str(e).lower():
+            logging.warning("⏳ Initial tx pending beyond timeout. Attempting one replacement bump.")
+            # attempt single replacement bump
+            new_params = gas_params()
+            if new_params is None:
+                logging.warning("⏳ Gas too high for replacement; aborting.")
+                return None
+            new_params["gasPrice"] = int(new_params["gasPrice"] * gas_bump)
+            tx_local.update({"nonce": get_nonce(), **new_params})
+            try:
+                signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+                raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
+                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
+                logging.info(f"🔄 Replacement TX sent after timeout: {tx_hash_retry.hex()} (waiting for receipt)")
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
+                logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
+                return tx_hash_retry.hex()
+            except Exception as e3:
+                logging.warning(f"⚠️ Replacement after timeout failed: {e3}")
+                return None
+        else:
+            logging.exception("❌ send_tx unexpected error:")
+            return None
+
 
 
 

@@ -68,7 +68,7 @@ class UniswapV3Manager:
     def align_tick(self, tick):
         return (tick // TICK_SPACING) * TICK_SPACING
 
-    def mint_position(self, center_price, range_pct=0.15, usdt_alloc=10.0):
+    def mint_position(self, center_price, range_pct=0.15, usdt_alloc=5.0):
         logging.info(f"🦄 Calculating V3 Mint params. Center: {center_price}, Range: {range_pct*100}%")
         
         lower_price = center_price * (1 - range_pct)

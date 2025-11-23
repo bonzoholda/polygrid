@@ -255,6 +255,31 @@ class UniswapV3Manager:
         send_tx(tx2)
         logging.info("✅ Position Closed and Funds Collected.")
 
+    def get_active_position_id(self):
+        """
+        Retrieves the first NFT ID owned by the bot (OWNER) 
+        that represents an active position.
+        """
+        try:
+            # Check how many NFTs (positions) the owner holds
+            balance = self.nft_manager.functions.balanceOf(OWNER).call()
+            
+            if balance == 0:
+                return None
+            
+            logging.info(f"NFT Manager reports {balance} active positions.")
+            
+            # For a simple bot, we usually just manage one position. 
+            # We fetch the first NFT ID (index 0) held by the owner.
+            # Uniswap V3 returns token ID, not index.
+            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(OWNER, 0).call()
+            return token_id
+            
+        except Exception as e:
+            # This can happen if the NFT balance is 0 or if there's a RPC issue
+            logging.warning(f"Failed to retrieve active position ID: {e}")
+            return None
+
 
 # --- Updated Runner ---
 def run_uniswap_v3_loop(poll_interval=60):

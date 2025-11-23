@@ -19,6 +19,7 @@ from utils import (
 )
 from ai_module import MLSignalGeneratorOKX
 from config import usdt, wmatic, OWNER, USDT_ADDR, WMATIC_ADDR
+from uniswap_v3_manager import run_uniswap_v3_loop
 
 # Optional import of asset_balancer
 try:
@@ -191,8 +192,10 @@ def start_bot(strategy: str = "grid_dca"):
             grid_dca_loop(poll_interval=60)
         elif strategy == "asset_balancer":
             run_asset_balancer()
+        elif strategy == "uniswap_v3":  # <--- NEW
+            run_uniswap_v3_loop(poll_interval=60)            
         else:
-            logging.error("Asset Balancer module not found.")
+            logging.error("Strategy module not found.")
         logging.info(f"🛑 {strategy} loop exited.")
 
     active_strategy = strategy

@@ -144,6 +144,8 @@ def start_bot(uid, strategy="grid_dca"):
     project_root = os.path.dirname(os.path.dirname(__file__))
     if strategy == "asset_balancer":
         bot_path = os.path.join(project_root, "asset_balancer.py")
+    elif strategy == "uniswap_v3":
+        bot_path = os.path.join(project_root, "uniswap_v3_manager.py")
     else:
         bot_path = os.path.join(project_root, "main.py")
 

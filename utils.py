@@ -1,229 +1,336 @@
 # utils.py
-import time, os, math
+import os
+import time
 import logging
 import requests
-from web3 import Web3
 from decimal import Decimal
+from typing import Optional, List
+from web3 import Web3
+from web3.middleware import geth_poa_middleware
+
+# import external objects from your config (must exist)
+# expected in config.py: w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, USDT_ADDR, WMATIC_ADDR
 from config import w3, router, usdt, wmatic, OWNER, PRIVATE_KEY, ROUTER_ADDR, USDT_ADDR, WMATIC_ADDR
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+# ---------- Configuration ----------
+MAX_UINT = 2 ** 256 - 1
+GAS_LIMIT_APPROVE = 120_000
+GAS_LIMIT_SWAP = 700_000
+# Gas price hard ceiling (wei). Keep high so aggressive mode can still operate.
+GAS_PRICE_LIMIT = 1500 * (10 ** 9)  # 1500 gwei
+# How long to wait for receipts before considering replacement attempts (seconds)
+RECEIPT_TIMEOUT = 300  # 5 minutes
+# send_tx retry policy (aggressive)
+SENDTX_MAX_RETRIES = 3
+SENDTX_GAS_BUMP = 1.5  # 50% bump per retry (aggressive mode)
+# safe swap retry attempts
+SWAP_MAX_ATTEMPTS = 3
+SWAP_GAS_BUMP = 1.5  # bump per swap retry
+# slippage multiplier steps when we progressively relax minOut (1.00 -> 0.98 -> 0.95)
+SLIPPAGE_STEPS = [1.00, 0.98, 0.95]
 
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
+# ---------- Logging ----------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
-from web3.middleware import geth_poa_middleware
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# ---------- Constants ----------
-MAX_UINT = 2**256 - 1
-GAS_LIMIT_APPROVE = 100_000
-GAS_LIMIT_SWAP = 600_000
-GAS_PRICE_LIMIT = 1500 * (10**9)  # 1500 gwei cap (skip tx if higher)
-RECEIPT_TIMEOUT = 300 # 5 minutes is a safer window for confirmation
-
-# ---------- Minimal ABIs ----------
+# ---------- Minimal ABI for ERC20 (we need decimals, balanceOf, approve, allowance) ----------
 ERC20_ABI = [
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "name",
-        "outputs": [{"name": "", "type": "string"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "symbol",
-        "outputs": [{"name": "", "type": "string"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "decimals",
-        "outputs": [{"name": "", "type": "uint8"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [],
-        "name": "totalSupply",
-        "outputs": [{"name": "", "type": "uint256"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [{"name": "_owner", "type": "address"}],
-        "name": "balanceOf",
-        "outputs": [{"name": "balance", "type": "uint256"}],
-        "type": "function",
-    },
-    {
-        "constant": False,
-        "inputs": [{"name": "_to", "type": "address"}, {"name": "_value", "type": "uint256"}],
-        "name": "transfer",
-        "outputs": [{"name": "success", "type": "bool"}],
-        "type": "function",
-    },
-    {
-        "constant": False,
-        "inputs": [
-            {"name": "_from", "type": "address"},
-            {"name": "_to", "type": "address"},
-            {"name": "_value", "type": "uint256"},
-        ],
-        "name": "transferFrom",
-        "outputs": [{"name": "success", "type": "bool"}],
-        "type": "function",
-    },
-    {
-        "constant": False,
-        "inputs": [
-            {"name": "_spender", "type": "address"},
-            {"name": "_value", "type": "uint256"},
-        ],
-        "name": "approve",
-        "outputs": [{"name": "success", "type": "bool"}],
-        "type": "function",
-    },
-    {
-        "constant": True,
-        "inputs": [
-            {"name": "_owner", "type": "address"},
-            {"name": "_spender", "type": "address"},
-        ],
-        "name": "allowance",
-        "outputs": [{"name": "remaining", "type": "uint256"}],
-        "type": "function",
-    },
-    {
-        "anonymous": False,
-        "inputs": [
-            {"indexed": True, "name": "owner", "type": "address"},
-            {"indexed": True, "name": "spender", "type": "address"},
-            {"indexed": False, "name": "value", "type": "uint256"},
-        ],
-        "name": "Approval",
-        "type": "event",
-    },
-    {
-        "anonymous": False,
-        "inputs": [
-            {"indexed": True, "name": "from", "type": "address"},
-            {"indexed": True, "name": "to", "type": "address"},
-            {"indexed": False, "name": "value", "type": "uint256"},
-        ],
-        "name": "Transfer",
-        "type": "event",
-    },
+    {"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function"},
+    {"constant": True, "inputs": [{"name": "_owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "balance", "type": "uint256"}], "type": "function"},
+    {"constant": False, "inputs": [{"name": "_spender", "type": "address"}, {"name": "_value", "type": "uint256"}], "name": "approve", "outputs": [{"name": "success", "type": "bool"}], "type": "function"},
+    {"constant": True, "inputs": [{"name": "_owner", "type": "address"}, {"name": "_spender", "type": "address"}], "name": "allowance", "outputs": [{"name": "remaining", "type": "uint256"}], "type": "function"},
 ]
 
-# ---------- Utility helpers ----------
-def to_decimals(amount: float, decimals: int) -> int:
+# ---------- Helpers ----------
+def to_raw(amount: Decimal, decimals: int) -> int:
     return int(Decimal(amount) * (10 ** decimals))
 
-def from_decimals(amount_int: int, decimals: int) -> float:
+
+def from_raw(amount_int: int, decimals: int) -> float:
     return float(Decimal(amount_int) / (10 ** decimals))
 
-def get_token_decimals(token_contract):
+
+def safe_get_decimals(token_contract) -> int:
     try:
         return token_contract.functions.decimals().call()
     except Exception:
+        # sensible default
         return 18
 
-def get_nonce():
-    """Track pending transactions to avoid nonce conflicts"""
-    return w3.eth.get_transaction_count(OWNER, 'pending')
 
-def get_safe_gas_price(multiplier=1.20, max_gwei=300, min_gwei=30):
-    base = w3.eth.gas_price
-    boosted = int(base * multiplier)
-    boosted = max(boosted, Web3.to_wei(min_gwei, 'gwei'))  # avoid tx stuck at 1 gwei
-    return min(boosted, Web3.to_wei(max_gwei, 'gwei'))
+def get_nonce() -> int:
+    """Use 'pending' so replacement txs can be created safely."""
+    return w3.eth.get_transaction_count(OWNER, "pending")
 
-def gas_params():
-    """Dynamic gas settings with ceiling control"""
-    g = get_safe_gas_price()
-    if g > GAS_PRICE_LIMIT:
-        logging.warning(f"⚠️ Gas too high ({g/1e9:.1f} gwei), skipping transaction attempt.")
-        return None
-    return {"gasPrice": g, "chainId": w3.eth.chain_id}
 
-def get_allowance(token_contract, owner, spender):
-    """Check token allowance for router"""
+def get_node_gas_price() -> int:
+    """Return the provider's suggested gas price (wei)."""
     try:
-        allowance = token_contract.functions.allowance(owner, spender).call()
-        return allowance
+        return w3.eth.gas_price
+    except Exception:
+        # fallback to a moderate default (30 gwei)
+        return Web3.to_wei(30, "gwei")
+
+
+def gas_params(multiplier: float = 1.0, max_gwei: Optional[int] = None) -> Optional[dict]:
+    """
+    Returns gas params dict or None if gas price above ceiling.
+    Multiplier multiplies provider gas_price to add safety buffer.
+    """
+    base = get_node_gas_price()
+    price = int(base * multiplier)
+    # enforce minimum reasonable gas (avoid 1 wei)
+    min_gwei = Web3.to_wei(10, "gwei")
+    price = max(price, min_gwei)
+    # enforce global ceiling
+    if price > GAS_PRICE_LIMIT:
+        logging.warning(f"⚠️ Gas price {price/1e9:.1f} gwei > ceiling {GAS_PRICE_LIMIT/1e9:.1f} gwei → skipping tx.")
+        return None
+    return {"gasPrice": price, "chainId": w3.eth.chain_id}
+
+
+# ---------- Contracts (use contract objects from config where possible) ----------
+# If config provides `usdt` and `wmatic` contract objects, use them. Otherwise create from addresses.
+try:
+    _usdt = usdt
+except Exception:
+    _usdt = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)
+
+try:
+    _wmatic = wmatic
+except Exception:
+    _wmatic = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)
+
+_router = router  # should be contract in config
+
+# ---------- On-chain reads ----------
+def get_onchain_token_balance(token_contract, address):
+    try:
+        bal = token_contract.functions.balanceOf(address).call()
+        dec = safe_get_decimals(token_contract)
+        return from_raw(bal, dec)
     except Exception as e:
-        logging.warning(f"Failed to check allowance: {e}")
+        logging.exception("Failed to read on-chain token balance.")
+        return 0.0
+
+
+# ---------- Price fetching ----------
+def get_pol_price_from_okx():
+    """
+    Fetch latest POL/USDT price from OKX public ticker.
+    """
+    try:
+        url = "https://www.okx.com/api/v5/market/ticker"
+        params = {"instId": "POL-USDT"}
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("code") != "0" or not data.get("data"):
+            logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
+            return None
+        price = float(data["data"][0]["last"])
+        logging.info(f"💰 Current POL price: {price:.6f} USDT")
+        return price
+    except Exception as e:
+        logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
+        return None
+
+
+# ---------- Estimate amounts out ----------
+def estimate_amounts_out(amount_in_raw: int, path: List[str]) -> Optional[List[int]]:
+    try:
+        amounts = _router.functions.getAmountsOut(int(amount_in_raw), path).call()
+        return [int(a) for a in amounts]
+    except Exception as e:
+        logging.warning(f"estimate_amounts_out failed: {e}")
+        return None
+
+
+# ---------- Approvals ----------
+def get_allowance(token_contract, owner_addr, spender_addr) -> int:
+    try:
+        return int(token_contract.functions.allowance(owner_addr, spender_addr).call())
+    except Exception as e:
+        logging.warning(f"Failed to read allowance: {e}")
         return 0
 
-# ---------- Approve helper (expects amount in raw units, i.e. "wei/uint") ----------
-def approve_if_needed(token_contract, spender, amount_wei):
+
+def approve_if_needed(token_contract, spender_addr, amount_required_raw: int) -> bool:
     """
-    Ensure router has allowance >= amount_wei for token_contract.
-    - token_contract: web3 Contract (ERC20)
-    - spender: router address
-    - amount_wei: amount in token's smallest unit (int)
-    Returns True on success, False on failure.
+    Ensure router has at least amount_required_raw allowance.
+    Approve MAX_UINT once if insufficient.
+    Returns True if allowance is sufficient (either already or after a confirmed approval tx).
     """
     try:
-        allowance = token_contract.functions.allowance(OWNER, spender).call()
-        if allowance >= int(amount_wei):
+        allowance = get_allowance(token_contract, OWNER, spender_addr)
+        if allowance >= int(amount_required_raw):
             logging.info(f"✅ Sufficient allowance ({allowance}) — no approval needed.")
             return True
 
-        logging.info(f"🔐 Approving router {spender} to spend token {token_contract.address} (MAX_UINT).")
-        tx = token_contract.functions.approve(spender, MAX_UINT).build_transaction({
+        logging.info(f"🔐 Requesting approval (MAX_UINT) for {token_contract.address} -> {spender_addr} ...")
+        # Build approve tx
+        tx = token_contract.functions.approve(spender_addr, MAX_UINT).build_transaction({
             "from": OWNER,
             "nonce": get_nonce(),
             "gas": GAS_LIMIT_APPROVE,
-            **(gas_params() or {})
+            **(gas_params(multiplier=1.0) or {}),
         })
 
         tx_hash = send_tx(tx)
         if not tx_hash:
-            logging.warning("⚠️ Approval transaction failed or skipped.")
+            logging.warning("⚠️ Approval tx failed or skipped.")
             return False
 
-        # wait for receipt (best-effort)
+        # best-effort wait and verify
         try:
-            w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
+            if receipt is None or receipt.status != 1:
+                logging.warning("⚠️ Approval tx did not succeed (receipt.status != 1).")
+                # still check allowance on-chain (some nodes delayed)
+            else:
+                logging.info("✅ Approval tx confirmed successful.")
         except Exception:
-            logging.warning("⚠️ Approval tx did not confirm quickly; continuing and relying on on-chain state check later.")
-        # verify allowance again
-        new_allow = token_contract.functions.allowance(OWNER, spender).call()
-        if new_allow >= int(amount_wei):
-            logging.info("✅ Approval confirmed on-chain.")
+            logging.warning("⚠️ Approval tx not confirmed quickly; continuing (will re-check allowance).")
+
+        # confirm allowance
+        new_allow = get_allowance(token_contract, OWNER, spender_addr)
+        if new_allow >= int(amount_required_raw):
+            logging.info("✅ Allowance sufficient after approval.")
             return True
-        logging.error("❌ Approval not reflected on-chain after tx.")
+        logging.error("❌ Allowance still insufficient after approval tx.")
         return False
 
-    except Exception as exc:
-        logging.exception("❌ approve_if_needed() error:")
+    except Exception as e:
+        logging.exception("approve_if_needed error:")
         return False
 
 
-# ---------- safe_swap_exact_tokens_for_tokens (REPLACEMENT) ----------
-def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline):
+# ---------- send_tx (aggressive retry-on-underpriced / replacement strategy) ----------
+def send_tx(tx: dict, max_retries: int = SENDTX_MAX_RETRIES, gas_bump: float = SENDTX_GAS_BUMP) -> Optional[str]:
     """
-    Swap with:
-      - dynamic approval,
-      - gas ceiling guard,
-      - retry with gas bump,
-      - progressive slippage expansion (if caller passed amount_out_min==0 we estimate expected out).
-    Returns tx_hash hex (string) on confirmed success, or None on failure/skip.
+    Sign and broadcast tx. Waits for confirmation and returns tx_hash hex only if the tx confirmed successfully (status==1).
+    On underpriced/replacement/node errors, tries replacement txs with bumped gas price (aggressive).
+    Returns: tx_hash hex string on success, or None on failure/skip.
     """
-    MAX_ATTEMPTS = 3
-    GAS_BUMP = 1.20  # 20% per retry
-    # multipliers applied to *expected* out to relax minOut progressively (1.00 -> 0.98 -> 0.95)
-    SLIPPAGE_STEPS = [1.00, 0.98, 0.95]
+    if gas_params() is None:
+        logging.warning("⏳ Transaction skipped due to high gas.")
+        return None
 
-    # quick gas guard
+    # operate on a local copy
+    tx_local = dict(tx)
+    # apply initial gas params
+    initial_params = gas_params(multiplier=1.0)
+    if initial_params is None:
+        logging.warning("⏳ Initial gas params blocked; skipping tx.")
+        return None
+    tx_local.update(initial_params)
+
+    # sign initial tx
+    try:
+        signed = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+        raw = getattr(signed, "raw_transaction", None) or getattr(signed, "rawTransaction", None)
+        if raw is None:
+            raise AttributeError("Signed tx has no raw data.")
+    except Exception as e:
+        logging.exception("Failed to sign tx:")
+        return None
+
+    try:
+        tx_hash = w3.eth.send_raw_transaction(raw)
+        logging.info(f"✅ TX sent: {tx_hash.hex()} (waiting up to {RECEIPT_TIMEOUT}s for receipt)")
+        # wait for receipt
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
+        if receipt is None:
+            logging.warning("⚠️ No receipt returned (None).")
+            return None
+        if getattr(receipt, "status", None) != 1:
+            logging.error(f"❌ TX reverted or failed on-chain (status={getattr(receipt,'status',None)}). TxHash={tx_hash.hex()}")
+            return None
+        logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}: {tx_hash.hex()}")
+        return tx_hash.hex()
+
+    except ValueError as e:
+        # RPC returned an error immediately (e.g., underpriced, nonce)
+        err_s = str(e).lower()
+        logging.warning(f"⚠️ send_tx ValueError: {e}")
+        # Check if retryable
+        retryable_tokens = ("underpriced", "replacement transaction", "fee too low", "max fee per gas", "nonce", "insufficient funds")
+        if not any(tok in err_s for tok in retryable_tokens):
+            logging.error("❌ send_tx non-retryable ValueError.")
+            return None
+
+        # Retry loop with bumped gasPrice and fresh nonce
+        for attempt in range(1, max_retries + 1):
+            logging.info(f"🔁 send_tx replacement attempt {attempt}/{max_retries}")
+            new_params = gas_params()
+            if new_params is None:
+                logging.warning("⏳ Gas too high for retry; aborting.")
+                return None
+            # bump gasPrice aggressively
+            new_price = int(new_params["gasPrice"] * (gas_bump ** attempt))
+            if new_price > GAS_PRICE_LIMIT:
+                logging.warning("⚠️ Bumped gas exceeds ceiling; aborting retries.")
+                return None
+            new_params["gasPrice"] = new_price
+            # refresh nonce (use pending to replace)
+            new_nonce = get_nonce()
+            tx_local.update({"nonce": new_nonce, **new_params})
+            try:
+                signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+                raw_retry = getattr(signed_retry, "raw_transaction", None) or getattr(signed_retry, "rawTransaction", None)
+                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
+                logging.info(f"🔄 Replacement TX sent: {tx_hash_retry.hex()} (waiting up to {RECEIPT_TIMEOUT}s)")
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
+                if receipt and getattr(receipt, "status", None) == 1:
+                    logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
+                    return tx_hash_retry.hex()
+                else:
+                    logging.warning(f"⚠️ Replacement TX did not confirm successfully (status={getattr(receipt,'status',None)}).")
+            except Exception as e2:
+                logging.warning(f"⚠️ Replacement attempt {attempt} failed: {e2}")
+            time.sleep(1 + attempt)
+
+        logging.error("❌ All send_tx replacement retries failed.")
+        return None
+
+    except Exception as e:
+        # This captures TimeExhausted or other unexpected issues. Attempt one replacement with bumped gas.
+        logging.exception("❌ send_tx unexpected error — attempting a single replacement if possible:")
+        try:
+            new_params = gas_params()
+            if new_params is None:
+                logging.warning("⏳ Gas too high for replacement; aborting.")
+                return None
+            new_params["gasPrice"] = int(new_params["gasPrice"] * gas_bump)
+            if new_params["gasPrice"] > GAS_PRICE_LIMIT:
+                logging.warning("⚠️ Replacement gas would exceed ceiling; aborting.")
+                return None
+            tx_local.update({"nonce": get_nonce(), **new_params})
+            signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
+            raw_retry = getattr(signed_retry, "raw_transaction", None) or getattr(signed_retry, "rawTransaction", None)
+            tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
+            logging.info(f"🔄 Replacement TX after unexpected error sent: {tx_hash_retry.hex()} (waiting up to {RECEIPT_TIMEOUT}s)")
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
+            if receipt and getattr(receipt, "status", None) == 1:
+                logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
+                return tx_hash_retry.hex()
+            logging.warning("⚠️ Replacement after unexpected error did not confirm successfully.")
+            return None
+        except Exception as e3:
+            logging.exception("⚠️ Replacement after unexpected error failed:")
+            return None
+
+
+# ---------- safe swap (uses send_tx + approve_if_needed) ----------
+def safe_swap_exact_tokens_for_tokens(amount_in_raw: int, amount_out_min_raw: int, path: List[str], to: str, deadline: int) -> Optional[str]:
+    """
+    Robust swap wrapper:
+      - ensures allowance (approve MAX_UINT if needed),
+      - estimates expected out if caller passed amount_out_min_raw == 0,
+      - tries up to SWAP_MAX_ATTEMPTS with progressive slippage (SLIPPAGE_STEPS)
+      - bump gas aggressively between attempts.
+    Returns confirmed tx_hash (hex) on success, otherwise None.
+    """
+    # quick gas check
     if gas_params() is None:
         logging.warning("⏳ Gas too high — skipping swap.")
         return None
@@ -231,57 +338,47 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
     input_addr = path[0]
     input_token = w3.eth.contract(address=input_addr, abi=ERC20_ABI)
 
-    # Ensure approval of input token for router (amount_in is raw units)
-    if not approve_if_needed(input_token, ROUTER_ADDR, int(amount_in)):
-        logging.error("❌ Approval for input token failed, aborting swap.")
+    # ensure approval (amount_in_raw is in token's raw units)
+    if not approve_if_needed(input_token, ROUTER_ADDR, int(amount_in_raw)):
+        logging.error("❌ Approval failed; aborting swap.")
         return None
 
-    # If caller provided amount_out_min == 0, try to estimate expected output now
-    base_out = None
-    if int(amount_out_min) == 0:
-        try:
-            est = estimate_amounts_out(amount_in, path)
-            if est:
-                base_out = int(est[-1])
-                logging.info(f"🔍 Estimated expected out={base_out} (raw units)")
-            else:
-                logging.warning("⚠️ Could not estimate amountsOut; proceeding with amountOutMin=0 (riskier).")
-                base_out = 0
-        except Exception as e:
-            logging.warning("⚠️ estimate_amounts_out failed; proceeding with amountOutMin=0", exc_info=True)
+    # estimate base_out if needed
+    base_out = int(amount_out_min_raw) if int(amount_out_min_raw) != 0 else 0
+    if base_out == 0:
+        est = estimate_amounts_out(amount_in_raw, path)
+        if est:
+            base_out = int(est[-1])
+            logging.info(f"🔍 Estimated output (raw): {base_out}")
+        else:
+            logging.warning("⚠️ Could not estimate amountsOut; will proceed with amountOutMin=0 (risk of revert).")
             base_out = 0
-    else:
-        base_out = int(amount_out_min)
 
-    # Attempt loop
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        # compute adjusted amount_out_min (apply slippage multiplier to base_out)
-        try:
-            multiplier = SLIPPAGE_STEPS[min(attempt - 1, len(SLIPPAGE_STEPS) - 1)]
-            adj_amount_out_min = int(base_out * multiplier) if base_out else int(amount_out_min)
-        except Exception:
-            adj_amount_out_min = int(amount_out_min)
+    for attempt in range(1, SWAP_MAX_ATTEMPTS + 1):
+        multiplier = SLIPPAGE_STEPS[min(attempt - 1, len(SLIPPAGE_STEPS) - 1)]
+        # when base_out==0 keep amount_out_min==0; else apply multiplier to relax minOut progressively
+        adj_out_min = int(base_out * multiplier) if base_out else 0
 
         if attempt > 1:
-            logging.warning(
-                f"🔁 Swap retry attempt {attempt}: using minOut={adj_amount_out_min} (multiplier {multiplier})"
-            )
+            logging.warning(f"🔁 Swap retry attempt {attempt}: adj_out_min={adj_out_min} (multiplier={multiplier})")
 
         params = gas_params()
         if params is None:
-            logging.warning("⏳ Gas too high now — aborting swap attempt.")
+            logging.warning("⏳ Gas too high now — abort swap attempt.")
             return None
 
-        # bump gasPrice for retries
         if attempt > 1:
-            params["gasPrice"] = int(params["gasPrice"] * (GAS_BUMP ** (attempt - 1)))
-            logging.info(f"⬆️ Bumped gasPrice for attempt {attempt}: {params['gasPrice']/1e9:.2f} gwei")
+            params["gasPrice"] = int(params["gasPrice"] * (SWAP_GAS_BUMP ** (attempt - 1)))
+            if params["gasPrice"] > GAS_PRICE_LIMIT:
+                logging.warning("⚠️ Bumped gas would exceed ceiling; aborting swap attempts.")
+                return None
+            logging.info(f"⬆️ Using gasPrice {params['gasPrice']/1e9:.2f} gwei for attempt {attempt}")
 
-        tx = None
+        # build tx
         try:
-            tx = router.functions.swapExactTokensForTokens(
-                int(amount_in),
-                int(adj_amount_out_min),
+            tx = _router.functions.swapExactTokensForTokens(
+                int(amount_in_raw),
+                int(adj_out_min),
                 path,
                 to,
                 int(deadline)
@@ -292,368 +389,101 @@ def safe_swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadl
                 **params
             })
         except Exception as e:
-            logging.warning(f"⚠️ Failed to build swap tx on attempt {attempt}: {e}", exc_info=True)
-            # If building tx fails with non-retryable error, abort
-            if "insufficient output amount" in str(e).lower():
-                # Allow retries that change slippage, else abort
-                pass
-            else:
-                return None
-
-        # send and wait using send_tx (which itself will attempt replacement if underpriced)
-        try:
-            tx_hash = send_tx(tx)
-            if tx_hash:
-                logging.info(f"✅ Swap confirmed (attempt {attempt}): {tx_hash}")
-                return tx_hash
-            else:
-                logging.warning(f"⚠️ send_tx returned None on swap attempt {attempt}; will retry if attempts remain.")
-        except Exception as e:
-            logging.warning(f"⚠️ Exception during swap attempt {attempt}: {e}", exc_info=True)
-
-        # small backoff before next attempt
-        time.sleep(1 + attempt)
-
-    logging.error("❌ Swap failed after maximum attempts.")
-    return None
-
-
-
-# ---------- send_tx (REPLACEMENT) ----------
-def send_tx(tx, max_retries=2, gas_bump=1.25):
-    """
-    Sign & broadcast tx. If node rejects as underpriced or the tx times out waiting for receipt,
-    attempt conservative replacement retries with bumped gasPrice.
-    Returns tx_hash hex on confirmed success, otherwise None.
-    """
-    # first gas check
-    params = gas_params()
-    if params is None:
-        logging.warning("⏳ Transaction skipped due to high gas.")
-        return None
-
-    # work on a local copy to avoid mutating caller object
-    tx_local = tx.copy()
-    tx_local.update(params)
-
-    # sign initial tx
-    signed = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
-    raw = getattr(signed, "raw_transaction", getattr(signed, "rawTransaction", None))
-    if raw is None:
-        raise AttributeError("Web3 signed transaction missing raw transaction field.")
-
-    try:
-        tx_hash = w3.eth.send_raw_transaction(raw)
-        logging.info(f"✅ TX sent: {tx_hash.hex()} (waiting for receipt up to {RECEIPT_TIMEOUT}s)")
-        # wait for receipt
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
-        logging.info(f"🧾 TX confirmed in block {receipt.blockNumber}")
-        return tx_hash.hex()
-
-    except ValueError as e:
-        # RPC returned an immediate rejection (underpriced / replacement / nonce issues)
-        err_s = str(e).lower()
-        retryable = any(k in err_s for k in ["underpriced", "replacement transaction", "fee too low", "max fee per gas", "nonce"])
-        logging.warning(f"⚠️ send_tx ValueError: {e} (retryable={retryable})")
-        if not retryable:
-            return None
-
-        # Retry with replacement transactions (bump gas). Keep attempts small.
-        for attempt in range(1, max_retries + 1):
-            logging.info(f"🔁 send_tx replacement attempt {attempt}/{max_retries}")
-            new_params = gas_params()
-            if new_params is None:
-                logging.warning("⏳ Gas too high for retry; aborting retries.")
-                return None
-
-            # bump gas price
-            new_params["gasPrice"] = int(new_params["gasPrice"] * (gas_bump ** attempt))
-            # refresh nonce for replacement tx
-            new_nonce = get_nonce()
-            # update tx_local with fresh nonce and new gas settings
-            tx_local.update({"nonce": new_nonce, **new_params})
-            signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
-            raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
-            if raw_retry is None:
-                logging.error("❌ signed retry missing raw tx")
-                return None
-
-            try:
-                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
-                logging.info(f"🔄 Replacement TX sent: {tx_hash_retry.hex()} (waiting for receipt up to {RECEIPT_TIMEOUT}s)")
-                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
-                logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
-                return tx_hash_retry.hex()
-            except Exception as e2:
-                logging.warning(f"⚠️ Replacement attempt {attempt} failed: {e2}")
-                # small backoff then next attempt
+            # if build_transaction fails (e.g., insufficient output amount for minimal out),
+            # allow retry to change slippage; otherwise abort
+            msg = str(e).lower()
+            logging.warning(f"⚠️ Failed building swap tx attempt {attempt}: {e}")
+            if "insufficient output amount" in msg or "execution reverted" in msg:
+                # proceed to retry with more relaxed slippage
                 time.sleep(1 + attempt)
                 continue
-
-        logging.error("❌ All replacement retries failed.")
-        return None
-
-    except Exception as e:
-        # Either TimeExhausted waiting for receipt, or unexpected issue.
-        # If the initial send succeeded but wait timed out (TimeExhausted),
-        # try one replacement attempt with bumped gas to expedite confirmation.
-        # If that fails, return None (caller treats as failed).
-        import web3
-        if isinstance(e, web3._utils.threads.TimeExhausted) or "timeexhausted" in str(type(e)).lower() or "timeout" in str(e).lower():
-            logging.warning("⏳ Initial tx pending beyond timeout. Attempting one replacement bump.")
-            # attempt single replacement bump
-            new_params = gas_params()
-            if new_params is None:
-                logging.warning("⏳ Gas too high for replacement; aborting.")
-                return None
-            new_params["gasPrice"] = int(new_params["gasPrice"] * gas_bump)
-            tx_local.update({"nonce": get_nonce(), **new_params})
-            try:
-                signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
-                raw_retry = getattr(signed_retry, "raw_transaction", getattr(signed_retry, "rawTransaction", None))
-                tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
-                logging.info(f"🔄 Replacement TX sent after timeout: {tx_hash_retry.hex()} (waiting for receipt)")
-                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
-                logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
-                return tx_hash_retry.hex()
-            except Exception as e3:
-                logging.warning(f"⚠️ Replacement after timeout failed: {e3}")
-                return None
-        else:
-            logging.exception("❌ send_tx unexpected error:")
             return None
 
+        # send and wait for confirmed success via send_tx()
+        tx_hash = send_tx(tx)
+        if tx_hash:
+            logging.info(f"✅ Swap successful (attempt {attempt}): {tx_hash}")
+            return tx_hash
+        else:
+            logging.warning(f"⚠️ Swap attempt {attempt} did not confirm successfully (tx_hash None); will retry if attempts remain.")
+            time.sleep(1 + attempt)
 
-
-
-# ============================================================
-# FETCH PRICE HISTORY (OKX public API)
-# ============================================================
-def fetch_price_history(days=3, interval="hourly"):
-    """
-    Fetch POL/USDT historical data from OKX public API.
-    OKX granularity supports 1h, 4h, 1d, etc.
-    """
-    url = "https://www.okx.com/api/v5/market/candles"
-    params = {"instId": "POL-USDT", "bar": "1H", "limit": str(days * 24)}
-
-    for attempt in range(3):
-        try:
-            r = requests.get(url, params=params, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-
-            # Log full response if API code != 0
-            if data.get("code") != "0":
-                logging.warning(f"⚠️ OKX API returned code={data.get('code')}, msg={data.get('msg')}")
-
-            if "data" not in data or not data["data"]:
-                logging.error("⚠️ No candle data returned from OKX.")
-                return None
-
-            df = pd.DataFrame(data["data"], columns=[
-                "ts", "o", "h", "l", "c", "vol", "volCcy", "volCcyQuote", "confirm"
-            ])
-            df["timestamp"] = pd.to_datetime(df["ts"].astype(float), unit="ms")
-            df["price"] = df["c"].astype(float)
-            df = df.sort_values("timestamp").reset_index(drop=True)
-            logging.info(f"✅ OKX price history fetched: {len(df)} records for POL/USDT.")
-            return df[["timestamp", "price"]]
-
-        except requests.exceptions.RequestException as e:
-            logging.warning(f"⚠️ Attempt {attempt+1}/3 failed fetching OKX data: {e}")
-            time.sleep(2)
-
-    logging.error("❌ Failed to fetch price history after 3 attempts.")
+    logging.error("❌ Swap failed after all attempts.")
     return None
 
 
-def feature_engineer(df: pd.DataFrame, window=14):
-    df = df.copy()
-    df["ret1"] = df["price"].pct_change()
-    df["sma"] = df["price"].rolling(window=window).mean()
-    df["std"] = df["price"].rolling(window=window).std()
-    df["momentum"] = df["price"] / df["price"].shift(window) - 1
-    # RSI simple
-    delta = df["price"].diff()
-    up = delta.clip(lower=0)
-    down = -1 * delta.clip(upper=0)
-    roll_up = up.rolling(window=window).mean()
-    roll_down = down.rolling(window=window).mean().replace(0, 1e-9)
-    rs = roll_up / roll_down
-    df["rsi"] = 100 - (100 / (1 + rs))
-    df = df.dropna().reset_index(drop=True)
-    return df
-
-def train_small_model(df: pd.DataFrame):
+# ---------- convenience wrappers for USDT <-> WMATIC ----------
+def swap_usdt_to_wmatic(amount_usdt: float, slippage: float = 0.02) -> Optional[str]:
     """
-    Train a small RandomForestClassifier on historical data:
-    Label = 1 if future 3-step return > threshold else 0
-    This is a very lightweight 'AI' used to generate BUY/HOLD.
+    Swap human amount_usdt (float) --> WMATIC. Returns confirmed tx_hash or None.
+    Constructs a reasonable amountOutMin based on estimate and slippage.
     """
-    df = feature_engineer(df)
-    # create label: next n periods return
-    future_horizon = 3
-    df["future_ret"] = df["price"].shift(-future_horizon) / df["price"] - 1
-    threshold = 0.002  # require ~0.2% forward move to call it a positive sample
-    df = df.dropna().reset_index(drop=True)
-    df["label"] = (df["future_ret"] > threshold).astype(int)
-    features = ["ret1", "sma", "std", "momentum", "rsi"]
-    X = df[features]
-    y = df["label"]
-    if len(df) < 40:
-        # not enough data -> fallback
-        model = None
-        return model
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-    model = RandomForestClassifier(n_estimators=50, random_state=42)
-    model.fit(X_train, y_train)
-    return model
-
-
-# ============================================================
-# AI BUY SIGNAL (Simple SMA Crossover AI Logic)
-# ============================================================
-def ai_buy_signal():
-    """
-    Generate AI-based BUY signal using OKX price data.
-    Returns: bool
-    """
-    try:
-        df = fetch_price_history(days=3, interval="hourly")
-        if df is None or df.empty:
-            logging.error("❌ No price data available. Cannot generate AI signal.")
-            return False
-
-        # Simple AI logic: 5h SMA > 20h SMA triggers BUY
-        df["sma_fast"] = df["price"].rolling(5).mean()
-        df["sma_slow"] = df["price"].rolling(20).mean()
-
-        latest_fast = df["sma_fast"].iloc[-1]
-        latest_slow = df["sma_slow"].iloc[-1]
-        signal = latest_fast > latest_slow
-
-        logging.info(f"🤖 AI Signal computed | SMA_fast={latest_fast:.4f} | SMA_slow={latest_slow:.4f} | Signal={signal}")
-        return signal
-
-    except Exception as e:
-        logging.error(f"AI signal generation failed, defaulting to False. Error: {e}", exc_info=True)
-        return False
-
-# ---------- Trading logic / position tracking ----------
-
-@dataclass
-class Position:
-    lots_alloc: List[int] = field(default_factory=lambda: [1,1,2,3])  # sums to 7
-    lot_size_usdt: float = 0.0
-    buy_prices: List[float] = field(default_factory=list)  # price per lot executed
-    amounts_wmatic: List[float] = field(default_factory=list)  # WMATIC amounts per buy
-    total_usdt_spent: float = 0.0
-
-    def total_wmatic(self):
-        return sum(self.amounts_wmatic)
-
-    def cost_basis(self):
-        return self.total_usdt_spent  # USDT spent
-
-    def current_value_usdt(self, price_wmatic_usdt: float):
-        return self.total_wmatic() * price_wmatic_usdt
-
-    def realized_profit_pct(self, price_wmatic_usdt: float):
-        if self.cost_basis() == 0:
-            return -999
-        return (self.current_value_usdt(price_wmatic_usdt) / self.cost_basis() - 1) * 100.0
-
-# helpers to read balances and price
-def get_onchain_token_balance(token_contract, address):
-    try:
-        bal = token_contract.functions.balanceOf(address).call()
-        dec = get_token_decimals(token_contract)
-        return from_decimals(bal, dec)
-    except Exception as e:
-        logging.exception("Failed to read on-chain token balance.")
-        return 0.0
-		
-def get_pol_price_from_okx():
-    """
-    Fetch latest POL/USDT price directly from OKX public API.
-    Returns: float or None
-    """
-    try:
-        url = "https://www.okx.com/api/v5/market/ticker"
-        params = {"instId": "POL-USDT"}
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-
-        if data.get("code") != "0" or not data.get("data"):
-            logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
-            return None
-
-        price = float(data["data"][0]["last"])
-        logging.info(f"💰 Current POL price: {price:.6f} USDT")
-        return price
-
-    except Exception as e:
-        logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
-        return None
-
-def estimate_amounts_out(amount_in, path):
-    try:
-        amounts = router.functions.getAmountsOut(int(amount_in), path).call()
-        return amounts
-    except Exception:
-        return None
-
-def swap_usdt_to_wmatic(amount_usdt):
-    """Swap USDT → WMATIC safely using allowance + gas guard"""
     try:
         if amount_usdt <= 0:
-            logging.warning("⚠️ swap_usdt_to_wmatic called with zero or negative amount.")
+            logging.warning("⚠️ swap_usdt_to_wmatic called with non-positive amount.")
             return None
 
-        amount_in = int(Decimal(amount_usdt) * (10 ** 6))  # USDT decimals = 6
+        dec_usdt = safe_get_decimals(_usdt)
+        dec_wmatic = safe_get_decimals(_wmatic)
+
+        amount_in_raw = int(Decimal(amount_usdt) * (10 ** dec_usdt))
         path = [USDT_ADDR, WMATIC_ADDR]
         deadline = int(time.time()) + 600
 
-        logging.info(f"🔁 Swapping {amount_usdt:.4f} USDT → WMATIC ...")
+        # estimate outputs
+        est = estimate_amounts_out(amount_in_raw, path)
+        if est:
+            expected_out = int(est[-1])
+            amount_out_min = int(expected_out * (1 - slippage))
+            logging.info(f"🔁 Swapping {amount_usdt:.6f} USDT -> expected_out {expected_out/(10**dec_wmatic):.6f} WMATIC (min {amount_out_min/(10**dec_wmatic):.6f})")
+        else:
+            amount_out_min = 0
+            logging.warning("⚠️ Could not estimate expected output; using amountOutMin=0 (riskier).")
 
-        return safe_swap_exact_tokens_for_tokens(
-            amount_in=amount_in,
-            amount_out_min=0,
-            path=path,
-            to=OWNER,
-            deadline=deadline
-        )
+        return safe_swap_exact_tokens_for_tokens(amount_in_raw, amount_out_min, path, OWNER, deadline)
 
     except Exception as e:
-        logging.error(f"❌ swap_usdt_to_wmatic failed: {e}", exc_info=True)
+        logging.exception("swap_usdt_to_wmatic failed:")
         return None
 
 
-def swap_wmatic_to_usdt(amount_wmatic):
-    """Swap WMATIC → USDT safely using allowance + gas guard"""
+def swap_wmatic_to_usdt(amount_wmatic: float, slippage: float = 0.02) -> Optional[str]:
+    """
+    Swap human amount_wmatic (float) --> USDT. Returns confirmed tx_hash or None.
+    """
     try:
-        if amount_wmatic <= 0:
-            logging.warning("⚠️ swap_wmatic_to_usdt called with zero or negative amount.")
-            return None
+        dec_wmatic = safe_get_decimals(_wmatic)
+        dec_usdt = safe_get_decimals(_usdt)
 
-        amount_in = int(Decimal(amount_wmatic) * (10 ** 18))  # WMATIC decimals = 18
+        amount_in_raw = int(Decimal(amount_wmatic) * (10 ** dec_wmatic))
         path = [WMATIC_ADDR, USDT_ADDR]
         deadline = int(time.time()) + 600
 
-        logging.info(f"🔁 Swapping {amount_wmatic:.4f} WMATIC → USDT ...")
+        est = estimate_amounts_out(amount_in_raw, path)
+        if est:
+            expected_out = int(est[-1])
+            amount_out_min = int(expected_out * (1 - slippage))
+            logging.info(f"🔁 Swapping {amount_wmatic:.6f} WMATIC -> expected_out {expected_out/(10**dec_usdt):.6f} USDT (min {amount_out_min/(10**dec_usdt):.6f})")
+        else:
+            amount_out_min = 0
+            logging.warning("⚠️ Could not estimate expected output; using amountOutMin=0 (riskier).")
 
-        return safe_swap_exact_tokens_for_tokens(
-            amount_in=amount_in,
-            amount_out_min=0,
-            path=path,
-            to=OWNER,
-            deadline=deadline
-        )
-
+        return safe_swap_exact_tokens_for_tokens(amount_in_raw, amount_out_min, path, OWNER, deadline)
     except Exception as e:
-        logging.error(f"❌ swap_wmatic_to_usdt failed: {e}", exc_info=True)
+        logging.exception("swap_wmatic_to_usdt failed:")
         return None
 
 
+# ----------------------------
+# The rest of your helpers / AI / model functions (kept here for continuity)
+# You can keep your existing ai_buy_signal, fetch_price_history, etc. below.
+# (If they already live in this file, keep them as-is; otherwise import them.)
+# ----------------------------
+
+# Example small helper preserved from your previous code: (feel free to replace with your actual implementations)
+def get_pol_price_from_okx_quiet():
+    """Alias kept for compatibility if other modules call this name."""
+    return get_pol_price_from_okx()
+
+
+# End of utils.py

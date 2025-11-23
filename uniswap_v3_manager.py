@@ -280,6 +280,74 @@ class UniswapV3Manager:
             logging.warning(f"Failed to retrieve active position ID: {e}")
             return None
 
+    def get_position_asset_value(self, token_id, current_price):
+        """
+        Calculates the amount of Token0 and Token1 held by the active position 
+        based on the current price. Returns the total value in USDT.
+        """
+        try:
+            # 1. Fetch Position Data
+            pos = self.nft_manager.functions.positions(token_id).call()
+            tick_lower = pos[5]
+            tick_upper = pos[6]
+            liquidity = pos[7]
+
+            if liquidity == 0:
+                logging.info(f"Position ID {token_id} has zero liquidity.")
+                return 0.0, 0.0, 0.0 # T0, T1, Total USD Value
+
+            # 2. Get Current Tick
+            current_tick = self.get_tick_from_price(current_price)
+
+            # 3. Uniswap V3 Math: Calculate Token Amounts
+            # This requires complex math based on Liquidity (L) and the current/boundary ticks.
+            # For simplicity and robust calculation, we will use a library approximation 
+            # or pre-calculated formulas. We'll stick to the core Web3 logic here:
+            
+            # Convert ticks to sqrtPrice (P = 1.0001^tick)
+            sqrt_price = math.sqrt(1.0001 ** current_tick)
+            sqrt_price_lower = math.sqrt(1.0001 ** tick_lower)
+            sqrt_price_upper = math.sqrt(1.0001 ** tick_upper)
+
+            amount0_wei = 0
+            amount1_wei = 0
+            
+            # Case A: Price is below the range (100% Token0)
+            if current_tick <= tick_lower:
+                amount0_wei = liquidity * ((sqrt_price_upper - sqrt_price_lower) / (sqrt_price_lower * sqrt_price_upper))
+                amount1_wei = 0
+            
+            # Case B: Price is above the range (100% Token1)
+            elif current_tick >= tick_upper:
+                amount0_wei = 0
+                amount1_wei = liquidity * (sqrt_price_upper - sqrt_price_lower)
+            
+            # Case C: Price is inside the range (Mixed T0 and T1)
+            else:
+                amount0_wei = liquidity * ((sqrt_price_upper - sqrt_price) / (sqrt_price * sqrt_price_upper))
+                amount1_wei = liquidity * (sqrt_price - sqrt_price_lower)
+
+            # 4. Convert to Human-Readable Floats (Handling Token Decimals)
+            # Assuming WMATIC is 18 decimals and USDT is 6 decimals.
+            if self.is_wmatic_zero:
+                # Token0 = WMATIC (18), Token1 = USDT (6)
+                amount_wmatic = amount0_wei / 1e18
+                amount_usdt = amount1_wei / 1e6
+            else:
+                # Token0 = USDT (6), Token1 = WMATIC (18)
+                amount_usdt = amount0_wei / 1e6
+                amount_wmatic = amount1_wei / 1e18
+            
+            # 5. Calculate Total Value in USDT
+            total_usdt_value = amount_usdt + (amount_wmatic * current_price)
+            
+            return amount_usdt, amount_wmatic, total_usdt_value
+
+        except Exception as e:
+            logging.error(f"Error calculating position value for ID {token_id}: {e}")
+            return 0.0, 0.0, 0.0
+
+
 
 # --- Updated Runner ---
 def run_uniswap_v3_loop(poll_interval=60):
@@ -297,11 +365,22 @@ def run_uniswap_v3_loop(poll_interval=60):
             if not price:
                 time.sleep(10)
                 continue
+            logging.info(f"💰 Current WMATIC price: {price:.4f} USDT") # Log price here
             
             # 2. Check Active ID
             active_id = manager.get_active_position_id()
             
             if active_id:
+                
+                # --- NEW: Get and Log Position Value ---
+                usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
+                
+                logging.info("----------------------------------------------------------------")
+                logging.info(f"🦄 Active Position ID: {active_id}")
+                logging.info(f"💰 Position Assets: {usdt_amt:.2f} USDT | {wmatic_amt:.4f} WMATIC")
+                logging.info(f"💵 **TOTAL LP VALUE (USD): ${total_value:.2f}**")
+                logging.info("----------------------------------------------------------------")    
+                
                 # --- NEW: Check if we need to Close ---
                 is_active = manager.check_position_status(active_id, price)
                 if not is_active:

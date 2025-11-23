@@ -179,3 +179,23 @@ def run_uniswap_v3_loop(poll_interval=60):
             traceback.print_exc() # Prints full stack trace to console
             logging.exception("V3 Loop Error")
             time.sleep(10)
+
+
+# ---------- Entry Point ----------
+if __name__ == "__main__":
+    import logging
+    import time
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+    logging.info("🚀 UniswapV3 bot initialized.")
+    try:
+        logging.info("⚙️ Starting UniswapV3 Strategy Loop...")
+        run_uniswap_v3_loop()  # 👈 this calls your actual rebalancing logic
+    except KeyboardInterrupt:
+        logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
+    except Exception as e:
+        logging.exception(f"❌ Unexpected error in Asset Balancer: {e}")

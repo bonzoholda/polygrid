@@ -41,6 +41,42 @@ ERC20_ABI = [
 ]
 
 # ---------- Helpers ----------
+
+# ---------- Decimal cache ----------
+_DECIMALS_CACHE = {}
+
+def get_token_decimals(token_contract):
+    """
+    Safe ERC20 decimals() fetch with caching.
+    token_contract: web3 contract instance
+    """
+    try:
+        addr = token_contract.address.lower()
+        if addr in _DECIMALS_CACHE:
+            return _DECIMALS_CACHE[addr]
+
+        decimals = token_contract.functions.decimals().call()
+        _DECIMALS_CACHE[addr] = decimals
+        return decimals
+
+    except Exception as e:
+        logging.error(f"❌ Failed to fetch decimals for {token_contract.address}: {e}")
+        # fallback for known tokens
+        if token_contract.address.lower() == USDT_ADDR.lower():
+            return 6
+        if token_contract.address.lower() == WMATIC_ADDR.lower():
+            return 18
+        return 18
+
+def to_decimals(amount_float, decimals):
+    """Convert float → raw integer token amount"""
+    return int(Decimal(amount_float) * (10 ** decimals))
+
+def from_decimals(amount_int, decimals):
+    """Convert raw integer token amount → float"""
+    return float(Decimal(amount_int) / (10 ** decimals))
+
+
 def to_raw(amount: Decimal, decimals: int) -> int:
     return int(Decimal(amount) * (10 ** decimals))
 
@@ -55,6 +91,18 @@ def safe_get_decimals(token_contract) -> int:
     except Exception:
         # sensible default
         return 18
+
+def estimate_amounts_out(amount_in, path):
+    """
+    Wrapper for router.getAmountsOut()
+    Returns list of raw integer amounts per hop.
+    """
+    try:
+        return router.functions.getAmountsOut(int(amount_in), path).call()
+    except Exception as e:
+        logging.warning(f"⚠️ getAmountsOut failed for {path}: {e}")
+        return None
+
 
 
 def get_nonce() -> int:

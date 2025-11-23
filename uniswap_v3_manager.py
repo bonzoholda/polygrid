@@ -166,7 +166,7 @@ def run_uniswap_v3_loop(poll_interval=60):
             if not active_id:
                 logging.info(f"🦄 No active position. Minting range around {price}...")
                 # Try to mint with 10 USDT worth (adjust 'usdt_alloc' as needed)
-                tx = manager.mint_position(center_price=price, range_pct=0.10, usdt_alloc=10.0)
+                tx = manager.mint_position(center_price=price, range_pct=0.10, usdt_alloc=5.0)
                 if tx:
                     logging.info(f"✅ Minted! TX: {tx}")
             else:

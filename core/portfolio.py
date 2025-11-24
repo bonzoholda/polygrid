@@ -15,6 +15,13 @@ from config import usdt, wmatic
 from uniswap_v3_manager import UniswapV3Manager
 from core.state import get_lp_state
 
+
+lp_value_usdt = 0.0
+lp_assets_usdt = 0.0
+lp_assets_wmatic = 0.0
+has_lp = False
+wmatic_price = None
+
 def _normalize_price(price):
     try:
         if price is None:
@@ -59,11 +66,6 @@ def fetch_portfolio(uid: int):
         # Prefer reading LP state (set by the running bot)
         # -------------------------------
         lp_state = get_lp_state(uid)
-        lp_value_usdt = 0.0
-        lp_assets_usdt = 0.0
-        lp_assets_wmatic = 0.0
-        has_lp = False
-        wmatic_price = None
 
         if lp_state:
             # Use stored state (this was updated by uniswap_v3_manager for that uid)
@@ -77,32 +79,6 @@ def fetch_portfolio(uid: int):
             except Exception as e:
                 logging.warning(f"Failed to parse lp_state for uid {uid}: {e}")
                 lp_state = None
-
-        if lp_state is None:
-            # No live state — attempt to read directly on-chain using UniswapV3Manager
-            try:
-                # try to use pool address from config if available; manager will warn/fallback itself
-                try:
-                    from config import UNISWAP_POOL_ADDR
-                    mgr = UniswapV3Manager(owner_address=owner_address, pool_address=UNISWAP_POOL_ADDR)
-                except Exception:
-                    mgr = UniswapV3Manager(owner_address=owner_address)
-
-                # get price (on-chain pool preferred)
-                pool_price, _ = mgr.get_pool_price_and_tick()
-                if pool_price is not None:
-                    wmatic_price = pool_price
-                else:
-                    # fallback: try using current wallet logic (router) — but we keep consistent with manager's fallback
-                    # ask manager for OKX fallback price if needed
-                    try:
-                        # manager.get_position_asset_value will itself call OKX fallback if needed
-                        pass
-                    except Exception:
-                        pass
-
-            except Exception as e:
-                logging.warning(f"⚠️ LP direct fetch failed for user {uid}: {e}")
 
 
         # -------------------------------

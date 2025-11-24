@@ -270,7 +270,7 @@ class UniswapV3Manager:
         """
         try:
             # Check how many NFTs (positions) the owner holds
-            balance = self.nft_manager.functions.balanceOf(OWNER).call()
+            balance = self.nft_manager.functions.balanceOf(self.owner).call()
             
             if balance == 0:
                 return None
@@ -280,7 +280,7 @@ class UniswapV3Manager:
             # For a simple bot, we usually just manage one position. 
             # We fetch the first NFT ID (index 0) held by the owner.
             # Uniswap V3 returns token ID, not index.
-            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(OWNER, 0).call()
+            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, 0).call()
             return token_id
             
         except Exception as e:

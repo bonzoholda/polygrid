@@ -41,7 +41,7 @@ def fetch_portfolio(uid: int):
         
         try:
             # Import Manager
-            from uniswap_v3_manager import UniswapV3Manager
+            from uniswap_v3_manager import UniswapV3Manager(owner_address = owner_address)
             
             # 🔥 DIRECT BYPASS: Initialize Manager with the specific user address
             # This forces the manager to look at THIS user's wallet, regardless of config.

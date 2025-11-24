@@ -631,12 +631,12 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info("----------------------------------------------------------------")
 
                 update_lp_state(
-                    uid=BOT_UID,
-                    price=price,
-                    usdt=usdt_amt,
-                    wmatic=wmatic_amt,
-                    total=total_value,
-                    active=True
+                    BOT_UID,
+                    price,
+                    usdt_amt,
+                    wmatic_amt,
+                    total_value,
+                    True
                 )
                 
                 is_active = manager.check_position_status(active_id, price)
@@ -650,7 +650,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
             else:
                 logging.info(f"🦄 No active position. Preparing entry around {price}...")
 
-                update_lp_state(uid=BOT_UID, price=price, usdt=0, wmatic=0, total=0, active=False)
+                update_lp_state(BOT_UID, price, 0, 0, 0, False)
                 
                 # Before minting, use on-chain price if pool available to rebalance and compute alloc
                 if manager.pool:

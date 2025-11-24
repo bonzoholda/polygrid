@@ -22,7 +22,7 @@ def fetch_portfolio(uid: int):
             return {"error": f"User {uid} not found"}
 
         owner_address = user["address"]
-        owner_id = user["uid"]
+        owner_id = user["id"]
 
         # Raw wallet balances
         usdt_bal = usdt.functions.balanceOf(owner_address).call() / 1e6

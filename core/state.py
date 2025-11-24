@@ -1,50 +1,77 @@
-from threading import Lock
+import json
 import logging
+from firebase_admin import initialize_app, firestore, credentials
 
-# Set up a lock to safely access the shared dictionary across threads
-_state_lock = Lock()
+logging.basicConfig(level=logging.INFO)
 
-# per-user LP states stored as dict of dicts
-# { uid: { "price", "lp_usdt", "lp_wmatic", "lp_total_value", "active" } }
-_user_lp_states = {}     
+# --- Global Firebase Variables (Provided by Runtime) ---
+# NOTE: These variables are expected to be available in the execution environment.
+# We parse them from the environment.
+APP_ID = os.environ.get('__app_id', 'default-app-id')
+FIREBASE_CONFIG_JSON = os.environ.get('__firebase_config', '{}')
 
-
-def save_lp_state(uid: int, state: dict):
-    """
-    Saves the complete LP position state dictionary for a specific user ID (uid).
-    This function is called by the Uniswap V3 bot thread.
-    
-    Args:
-        uid: The unique identifier for the user.
-        state: A dictionary containing the LP data calculated by the bot.
-    """
-    logging.debug(f"Attempting to save LP state for user {uid}")
-    
-    # Safely update the state under the lock
-    with _state_lock:
-        _user_lp_states[uid] = {
-            # Use .get() for safety and ensure type casting
-            "price": float(state.get("price", 0.0)),
-            "lp_usdt": float(state.get("lp_usdt", 0.0)),
-            "lp_wmatic": float(state.get("lp_wmatic", 0.0)),
-            "lp_total_value": float(state.get("lp_total_value", 0.0)),
-            "active": bool(state.get("active", False)),
-            # "token_id": state.get("token_id") # Optional: include token ID if present
-        }
-    logging.debug(f"Successfully saved LP state for user {uid}")
-
-
-def get_lp_state(uid: int):
-    """
-    Retrieve LP state for a specific user.
-    This function is called by the portfolio fetching process (API/Dashboard).
-    
-    Args:
-        uid: The unique identifier for the user.
+# --- Firebase Initialization ---
+db = None
+try:
+    if FIREBASE_CONFIG_JSON:
+        # 1. Prepare credentials using the config provided by the environment
+        firebase_config = json.loads(FIREBASE_CONFIG_JSON)
         
-    Returns:
-        dict: The LP state dictionary, or None if the state has never been saved.
+        # We need to construct a credential object that can be initialized globally
+        # If running in a secure environment where firebase_admin is used, the 
+        # config often contains the keys needed for service account initialization.
+        # For this controlled environment, we rely on the runtime handling the credentials,
+        # but we must initialize the app context.
+        
+        # A simple, secure way to handle initialization:
+        try:
+            # Check if an app is already initialized to prevent errors
+            initialize_app(options=firebase_config)
+        except ValueError:
+            # If the app is already initialized, just continue (e.g., if running multiple times)
+            pass 
+        
+        db = firestore.client()
+        logging.info("✅ Firestore client initialized successfully.")
+    else:
+        logging.error("❌ __firebase_config environment variable is missing or empty.")
+except Exception as e:
+    logging.error(f"❌ Failed to initialize Firebase: {e}")
+    db = None
+
+
+def save_lp_state(bot_id: int, state_updates: dict):
     """
-    # Safely retrieve the state under the lock
-    with _state_lock:
-        return _user_lp_states.get(uid)
+    Saves or updates the bot's state dictionary to Firestore.
+    
+    The state is saved in the public shared space so that the portfolio 
+    API can easily read it.
+    Path: /artifacts/{__app_id}/public/data/bot_states/{bot_id}
+
+    Args:
+        bot_id: The unique ID of the bot/user.
+        state_updates: A dictionary containing the LP data (price, active, lp_usdt, etc.)
+                       to be merged into the bot's main state document.
+    """
+    if db is None:
+        logging.error(f"❌ Cannot save state for Bot {bot_id}: Firestore not initialized.")
+        return
+
+    try:
+        # Define the document path for the bot's state in the public collection
+        doc_path = f"artifacts/{APP_ID}/public/data/bot_states/{bot_id}"
+        doc_ref = db.document(doc_path)
+
+        # Merge the incoming LP data into the main document. 
+        # This allows other functions (like wallet balance reporters) to update 
+        # other fields without overwriting this data.
+        doc_ref.set(state_updates, merge=True)
+        
+        logging.info(f"💾 Successfully saved LP state for Bot {bot_id} to Firestore.")
+
+    except Exception as e:
+        logging.error(f"❌ Error saving state for Bot {bot_id}: {e}")
+        logging.debug(f"State attempted to save: {state_updates}")
+
+# NOTE: The old 'update_lp_state' is now replaced by 'save_lp_state' which handles 
+# dictionary inputs, aligning with the new central state structure.

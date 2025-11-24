@@ -240,6 +240,64 @@ class UniswapV3Manager:
             return None
 
 
+    def get_position_asset_value(self, token_id, current_price):
+        try:
+            pos = self.nft_manager.functions.positions(token_id).call()
+            tick_lower = pos[5]
+            tick_upper = pos[6]
+            liquidity = pos[7]
+
+            if liquidity == 0:
+                logging.info(f"Position ID {token_id} has zero liquidity.")
+                return 0.0, 0.0, 0.0
+
+            current_tick = self.get_tick_from_price(current_price)
+
+            L = float(liquidity)
+
+            sqrt_price = 1.0001 ** (current_tick / 2.0)
+            sqrt_price_lower = 1.0001 ** (tick_lower / 2.0)
+            sqrt_price_upper = 1.0001 ** (tick_upper / 2.0)
+
+            amount0_wei = 0.0
+            amount1_wei = 0.0
+
+            if current_tick <= tick_lower:
+                amount0_wei = L * ((sqrt_price_upper - sqrt_price_lower) / (sqrt_price_lower * sqrt_price_upper))
+                amount1_wei = 0.0
+
+            elif current_tick >= tick_upper:
+                amount0_wei = 0.0
+                amount1_wei = L * (sqrt_price_upper - sqrt_price_lower)
+
+            else:
+                amount0_wei = L * ((sqrt_price_upper - sqrt_price) / (sqrt_price * sqrt_price_upper))
+                amount1_wei = L * (sqrt_price - sqrt_price_lower)
+
+            if self.is_wmatic_zero:
+                try:
+                    amount_wmatic = float(amount0_wei) / (10 ** self.dec0)
+                    amount_usdt = float(amount1_wei) / (10 ** self.dec1)
+                except Exception:
+                    amount_wmatic = float(amount0_wei) / 1e18
+                    amount_usdt = float(amount1_wei) / 1e6
+            else:
+                try:
+                    amount_usdt = float(amount0_wei) / (10 ** self.dec0)
+                    amount_wmatic = float(amount1_wei) / (10 ** self.dec1)
+                except Exception:
+                    amount_usdt = float(amount0_wei) / 1e6
+                    amount_wmatic = float(amount1_wei) / 1e18
+
+            total_usdt_value = amount_usdt + (amount_wmatic * current_price)
+
+            return amount_usdt, amount_wmatic, total_usdt_value
+
+        except Exception as e:
+            logging.error(f"Error calculating position value for ID {token_id}: {e}")
+            return 0.0, 0.0, 0.0
+
+
 # -------------------------
 # Runner (updates per-UID state)
 # -------------------------

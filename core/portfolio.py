@@ -68,11 +68,11 @@ def fetch_portfolio(uid: int):
         # -------------------------------
         lp_state = get_lp_state(owner_id)
 
-        wmatic_price = lp_state.get("price")
-        lp_assets_usdt = float(lp_state.get("lp_usdt", 0.0))
-        lp_assets_wmatic = float(lp_state.get("lp_wmatic", 0.0))
-        lp_value_usdt = float(lp_state.get("lp_total_value", 0.0))
-        has_lp = bool(lp_state.get("active", False))
+        wmatic_price = lp_state["price"]
+        lp_assets_usdt = lp_state["lp_usdt"]
+        lp_assets_wmatic = lp_state["lp_wmatic"]
+        lp_value_usdt = lp_state["lp_total_value"]
+        has_lp = lp_state["active"]
         logging.info(f"Using stored LP state for uid {uid}: price={wmatic_price}, lp_total={lp_value_usdt}")
 
         

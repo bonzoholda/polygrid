@@ -1,41 +1,30 @@
 # core/state.py
-
 from threading import Lock
 
 _state_lock = Lock()
 
-# Store LP state PER USER
-# Example:
-# {
-#     1: {"price":..., "lp_usdt":..., ...},
-#     2: {"price":..., "lp_usdt":..., ...},
-# }
-lp_state = {}
+# Store LP state per user
+# lp_states[uid] = { price, lp_usdt, lp_wmatic, lp_total_value, active }
+lp_states = {}
 
 
 def update_lp_state(uid, price, usdt, wmatic, total, active=True):
     """
-    Store LP state per user (thread-safe)
+    Update LP state for a specific user.
     """
     with _state_lock:
-        lp_state[uid] = {
+        lp_states[uid] = {
             "price": price,
             "lp_usdt": usdt,
             "lp_wmatic": wmatic,
             "lp_total_value": total,
-            "active": active
+            "active": active,
         }
 
 
 def get_lp_state(uid):
     """
-    Get LP state for a specific user (thread-safe)
+    Fetch LP state for a user. Returns None if no state exists.
     """
     with _state_lock:
-        return lp_state.get(uid, {
-            "price": None,
-            "lp_usdt": None,
-            "lp_wmatic": None,
-            "lp_total_value": None,
-            "active": False
-        }).copy()
+        return lp_states.get(uid, None)

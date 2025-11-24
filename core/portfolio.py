@@ -49,7 +49,7 @@ def fetch_portfolio(uid: int):
         # --- 1. Determine WMATIC Price (Fallback Logic) ---
         wmatic_price = 0.0
         
-        if lp and lp.get("price"):
+        if lp:
             # Use the price saved by the bot, which is most current/relevant
             wmatic_price = float(lp["price"])
         else:
@@ -62,7 +62,7 @@ def fetch_portfolio(uid: int):
 
 
         # --- 2. Process LP State ---
-        if not lp or not lp.get("active"):
+        if not lp:
             logging.info(f"No active LP state for user {uid}")
             lp_value = 0.0
             lp_usdt = 0.0

@@ -164,8 +164,6 @@ class UniswapV3Manager:
     # ---------------------------
     # Small helper for building and sending tx signed by user private key
     # ---------------------------
-    # NOTE: This local sender is redundant if all tx are routed through 
-    # the patched utils.send_tx, but we keep it for robustness if needed elsewhere.
     def _send_tx_local(self, tx_dict):
         """
         Sign with self.owner_private_key and send raw tx.
@@ -357,7 +355,7 @@ class UniswapV3Manager:
 
         # Target token amounts based on 50:50 allocation at center price
         target1_human = usdt_alloc # Total USDT value allocated to token1
-        target0_human = target1_human / center_price # Total WMATIC value allocated to token0
+        target0_human = target1_human / max(center_price, 1e-12) # Total WMATIC value allocated to token0
 
         if self.is_wmatic_zero:
             # T0 = WMATIC, T1 = USDT
@@ -650,12 +648,16 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
 
                 # FIX 2: Use save_lp_state with a dictionary payload
                 state_data = {
-                    "price": price,
+                    "wmatic_price": price,
                     "lp_usdt": usdt_amt,
                     "lp_wmatic": wmatic_amt,
-                    "lp_total_value": total_value,
-                    "active": True,
-                    #"token_id": active_id
+                    "lp_value_usdt": total_value,
+                    "lp_details": {
+                        "active": True,
+                        "usdt": usdt_amt,
+                        "wmatic": wmatic_amt,
+                        "token_id": active_id
+                    }
                 }
                 save_lp_state(BOT_UID, state_data)
                 
@@ -674,12 +676,16 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
 
                 # FIX 3: Use save_lp_state for inactive state
                 inactive_state_data = {
-                    "price": price,
+                    "wmatic_price": price,
                     "lp_usdt": 0.0,
                     "lp_wmatic": 0.0,
-                    "lp_total_value": 0.0,
-                    "active": False,
-                    #"token_id": None
+                    "lp_value_usdt": 0.0,
+                    "lp_details": {
+                        "active": False,
+                        "usdt": 0.0,
+                        "wmatic": 0.0,
+                        "token_id": None
+                    }
                 }
                 save_lp_state(BOT_UID, inactive_state_data)
                 

@@ -10,7 +10,7 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from config import usdt, wmatic
-from state import get_lp_state
+from core.state import get_lp_state
 
 
 def fetch_portfolio(uid: int):
@@ -28,7 +28,7 @@ def fetch_portfolio(uid: int):
         wmatic_bal = wmatic.functions.balanceOf(owner_address).call() / 1e18
 
         # LP state updated by bot
-        lp = get_lp_state(uid)
+        lp = get_lp_state(user)
 
         if not lp:
             logging.info(f"No LP state for user {uid}")
@@ -49,7 +49,7 @@ def fetch_portfolio(uid: int):
         total_value = wallet_value + lp_value
 
         return {
-            "uid": uid,
+            "uid": user,
             "owner": owner_address,
 
             "usdt_balance": usdt_bal,

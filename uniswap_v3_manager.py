@@ -220,24 +220,24 @@ class UniswapV3Manager:
     # Make sure they remain present in the file unchanged.
 
     def get_active_position_id(self):
-    """
-    Returns the first active LP position NFT for this owner.
-    """
-    try:
-        balance = self.nft_manager.functions.balanceOf(self.owner).call()
-        if balance == 0:
+        """
+        Returns the first active LP position NFT for this owner.
+        """
+        try:
+            balance = self.nft_manager.functions.balanceOf(self.owner).call()
+            if balance == 0:
+                return None
+    
+            # Return the newest position (last index)
+            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(
+                self.owner, balance - 1
+            ).call()
+    
+            return token_id
+    
+        except Exception as e:
+            logging.error(f"❌ get_active_position_id() failed: {e}")
             return None
-
-        # Return the newest position (last index)
-        token_id = self.nft_manager.functions.tokenOfOwnerByIndex(
-            self.owner, balance - 1
-        ).call()
-
-        return token_id
-
-    except Exception as e:
-        logging.error(f"❌ get_active_position_id() failed: {e}")
-        return None
 
 
 # -------------------------

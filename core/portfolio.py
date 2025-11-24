@@ -69,6 +69,7 @@ def fetch_portfolio(uid: int):
             # fallback: fetch directly
             active_id = manager.get_active_position_id()
             if active_id:
+                price = manager.get_slot0_price()  # <-- define price first                
                 usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
                 lp_state = {
                     "wmatic_price": price,

@@ -6,8 +6,7 @@ from web3 import Web3
 
 # --- Import from your robust utils ---
 from utils import (
-    w3, OWNER, PRIVATE_KEY, 
-    WMATIC_ADDR, USDT_ADDR, 
+    w3,
     send_tx, approve_if_needed, 
     get_pol_price_from_okx, 
     get_onchain_token_balance, # Used for auto-split
@@ -15,7 +14,9 @@ from utils import (
     swap_wmatic_to_usdt,       # Used for auto-split
     ERC20_ABI 
 )
-from config import usdt, wmatic # Contract objects
+
+from config import usdt, wmatic, OWNER, USDT_ADDR, WMATIC_ADDR
+
 
 # --- V3 Constants ---
 NFT_MANAGER_ADDR = "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"

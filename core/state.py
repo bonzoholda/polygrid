@@ -23,8 +23,11 @@ def update_lp_state(uid, price, usdt, wmatic, total, active=True):
 
 
 def get_lp_state(uid):
-    """
-    Fetch LP state for a user. Returns None if no state exists.
-    """
     with _state_lock:
-        return lp_states.get(uid, None)
+        return lp_states.get(uid, {
+            "price": 0,
+            "lp_usdt": 0,
+            "lp_wmatic": 0,
+            "lp_total_value": 0,
+            "active": False
+        })

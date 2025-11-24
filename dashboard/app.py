@@ -139,6 +139,13 @@ def get_portfolio(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+# -----Uniswap LP tracking----
+@app.post("/api/lpstat/{uid}")
+async def lpstat(uid: int, stat: dict):
+    # store or return the stat
+    update_lp_state(uid, stat)
+    return {"status": "ok"}
+
 
 # ---------- Bot statistics (initial value + runtime + growth) ----------
 @app.post("/api/botstat/{uid}")

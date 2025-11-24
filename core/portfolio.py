@@ -18,29 +18,40 @@ from uniswap_v3_manager import UniswapV3Manager
 # ------------------------------
 
 def get_wmatic_price_slot0():
+    """
+    Fetch price using Uniswap V3 slot0 sqrtPriceX96.
+    Uses the pool address defined in config.
+    """
     try:
+        from config import UNISWAP_POOL_ADDR
+        from uniswap_v3_manager import UniswapV3Manager
+
+        # Initialize manager with pool_address only
         mgr = UniswapV3Manager(
             owner_address=None,
-            pool_address=UNISWAP_POOL_ADDR,
-            token0=wmatic.address,
-            token1=usdt.address
+            pool_address=UNISWAP_POOL_ADDR
         )
 
         pool = mgr.pool
         if pool is None:
             raise Exception("Pool is None — check UNISWAP_POOL_ADDR")
 
+        # Read slot0 from pool
         slot0 = pool.functions.slot0().call()
         sqrtPriceX96 = slot0[0]
 
+        # price = (sqrtPriceX96^2) / 2^192
         price = (sqrtPriceX96 ** 2) / (2 ** 192)
-        adjusted = price * (10 ** (18 - 6))  # WMATIC→USDT
+
+        # Adjust decimal difference: WMATIC (18) → USDT (6)
+        adjusted = price * (10 ** (18 - 6))
 
         return float(adjusted)
 
     except Exception as e:
         logging.error(f"❌ Failed to get slot0 price: {e}")
         return None
+
 
 
 

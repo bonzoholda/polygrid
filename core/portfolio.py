@@ -17,32 +17,32 @@ from uniswap_v3_manager import UniswapV3Manager
 # ----------------------------------------------
 
 def get_wmatic_price_slot0():
+    """
+    Use UniswapV3Manager.get_pool_price_and_tick() so we reuse the exact same slot0 logic
+    and avoid duplicate implementations / mismatches.
+    Returns a float WMATIC price in USDT (rounded).
+    """
     try:
-        # Always load manager WITH correct pool set
-        mgr = UniswapV3Manager(
-            owner_address=None,
-            pool_address=UNISWAP_POOL_ADDR
-        )
+        # instantiate manager with pool address from config (no owner needed)
+        from config import UNISWAP_POOL_ADDR
+        mgr = UniswapV3Manager(owner_address=None, pool_address=UNISWAP_POOL_ADDR)
 
-        pool = mgr.pool
-        if pool is None:
-            raise Exception("UniswapV3Manager.pool is None — pool not loaded")
+        # call manager's helper which already returns (price_human, tick)
+        pool_price, _ = mgr.get_pool_price_and_tick()
 
-        # slot0 = (sqrtPriceX96, tick, ...)
-        slot0 = pool.functions.slot0().call()
-        sqrtPriceX96 = slot0[0]
+        if pool_price is None:
+            raise RuntimeError("UniswapV3Manager returned no pool price")
 
-        # Uniswap V3 formula
-        price = (sqrtPriceX96 ** 2) / (2 ** 192)
+        # Normalize: ensure it's a float and not some huge raw integer
+        price_float = float(pool_price)
 
-        # WMATIC 18 decimals → USDT 6 decimals
-        adjusted = price * (10 ** (18 - 6))
-
-        return float(adjusted)
+        # Round sensibly for frontend (6 decimals is good for USDT/WMATIC)
+        return round(price_float, 6)
 
     except Exception as e:
-        logging.error(f"❌ Failed to get slot0 price: {e}")
+        logging.error(f"❌ Failed to get slot0 price via manager: {e}")
         return None
+
 
 
 # ----------------------------------------------

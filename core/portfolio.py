@@ -4,29 +4,21 @@ import sys
 import os
 import traceback
 
-# Ensure root path included
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
-from config import usdt, wmatic
+from config import usdt, wmatic, UNISWAP_POOL_ADDR
 from uniswap_v3_manager import UniswapV3Manager
 
 
 # ------------------------------
-# PRICE VIA SLOT0 (CANONICAL)
+# PRICE VIA SLOT0
 # ------------------------------
 
 def get_wmatic_price_slot0():
-    """
-    Fetch price using Uniswap V3 slot0 sqrtPriceX96.
-    Always initializes the manager with pool_address.
-    """
     try:
-        from uniswap_v3_manager import UniswapV3Manager
-        from config import UNISWAP_POOL_ADDR, wmatic, usdt
-
         mgr = UniswapV3Manager(
             owner_address=None,
             pool_address=UNISWAP_POOL_ADDR,
@@ -41,11 +33,8 @@ def get_wmatic_price_slot0():
         slot0 = pool.functions.slot0().call()
         sqrtPriceX96 = slot0[0]
 
-        # price = (sqrt(x)/2^96)^2
         price = (sqrtPriceX96 ** 2) / (2 ** 192)
-
-        # convert ENTIRE PX from WMATIC → USDT
-        adjusted = price * (10 ** (18 - 6))
+        adjusted = price * (10 ** (18 - 6))  # WMATIC→USDT
 
         return float(adjusted)
 
@@ -76,15 +65,14 @@ def fetch_portfolio(uid: int):
         wmatic_balance = wmatic.functions.balanceOf(owner_address).call() / 1e18
 
         # ------------------------
-        # PRICE (slot0 on-chain)
+        # PRICE (slot0)
         # ------------------------
         wmatic_price = get_wmatic_price_slot0()
-
         if wmatic_price is None:
             return {"error": "Failed to fetch WMATIC price from Uniswap V3"}
 
         # ------------------------
-        # LP VALUE (from manager)
+        # LP VALUE
         # ------------------------
         lp_usdt_value = 0.0
         lp_assets_usdt = 0.0
@@ -92,7 +80,12 @@ def fetch_portfolio(uid: int):
         has_lp = False
 
         try:
-            v3_mgr = UniswapV3Manager(owner_address=owner_address)
+            v3_mgr = UniswapV3Manager(
+                owner_address=owner_address,
+                pool_address=UNISWAP_POOL_ADDR,
+                token0=wmatic.address,
+                token1=usdt.address
+            )
 
             pos_id = v3_mgr.get_active_position_id()
 
@@ -107,7 +100,6 @@ def fetch_portfolio(uid: int):
                 has_lp = True
 
                 logging.info(f"🦄 LP found for user {uid}: {total_val:.2f} USDT")
-
             else:
                 logging.info(f"User {uid} has no V3 LP positions.")
 
@@ -115,7 +107,7 @@ def fetch_portfolio(uid: int):
             logging.warning(f"⚠️ LP fetch failed for user {uid}: {e}")
 
         # ------------------------
-        # WALLET + LP VALUE
+        # FINAL PORTFOLIO VALUE
         # ------------------------
         wallet_value = usdt_balance + (wmatic_balance * wmatic_price)
         total_value = wallet_value + lp_usdt_value

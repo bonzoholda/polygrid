@@ -21,7 +21,7 @@ import config
 
 from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
 # FIX 1: Change import from update_lp_state to save_lp_state
-from core.state import update_lp_state
+from core.state import update_lp_state, get_lp_state
 import os
 
 # The UID associated with the bot's configuration/owner
@@ -665,6 +665,8 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     continue
                 else:
                     logging.info(f"🦄 Holding active position ID {active_id}. Price {price}")
+                    current_stat = get_lp_state()
+                    logging.info(f"Updated state val: {current_stat}")
 
             else:
                 # --- Inactive Position Management (Re-entry) ---

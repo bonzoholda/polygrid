@@ -20,6 +20,7 @@ from utils import (
 import config
 
 from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
+from core.state import portfolio_state
 
 # --- V3 Constants ---
 NFT_MANAGER_ADDR = "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
@@ -626,6 +627,12 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info(f"💵 **TOTAL LP VALUE (USD): ${total_value:.2f}**")
                 logging.info("----------------------------------------------------------------")
 
+                portfolio_state["lp_active"] = True
+                portfolio_state["lp_usdt"] = float(usdt_amt)
+                portfolio_state["lp_wmatic"] = float(wmatic_amt)
+                portfolio_state["lp_total"] = float(total_value)
+                portfolio_state["wmatic_price"] = float(price)
+                
                 is_active = manager.check_position_status(active_id, price)
                 if not is_active:
                     logging.info("♻️ Position closed. Preparing to re-enter...")

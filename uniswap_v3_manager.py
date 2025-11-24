@@ -628,6 +628,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info("----------------------------------------------------------------")
 
                 update_lp_state(
+                    uid,
                     price=price,
                     usdt=usdt_amt,
                     wmatic=wmatic_amt,

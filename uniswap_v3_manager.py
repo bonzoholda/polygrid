@@ -196,6 +196,13 @@ class UniswapV3Manager:
             logging.error(f"Error converting sqrtPriceX96 to human price: {e}")
             return None, tick
 
+    def get_pool_price_in_usdt(self):
+        slot0 = self.pool_contract.functions.slot0().call()
+        sqrt_price_x96 = slot0[0]
+        price = (sqrt_price_x96 / 2**96) ** 2  # token1/token0
+        return float(price)
+
+    
     def get_tick_from_price(self, price_float):
         try:
             if price_float is None or price_float <= 0:

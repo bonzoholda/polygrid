@@ -25,6 +25,8 @@ from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
 
 # Import the per-uid state helpers
 from core.state import update_lp_state, get_lp_state
+from dashboard.app import lpstat  # <-- FastAPI route handler
+import asyncio
 
 # The UID associated with the bot's configuration/owner (populated by start_bot via env)
 BOT_UID = int(os.getenv("BOT_UID", "0"))
@@ -515,8 +517,6 @@ class UniswapV3Manager:
 # -------------------------
 # Runner (updates per-UID state)
 # -------------------------
-import requests  # make sure requests is installed
-
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
     logging.info("🦄 Uniswap V3 Strategy Started.")
     manager = None
@@ -542,6 +542,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
             active_id = manager.get_active_position_id()
 
             if active_id:
+                # Fetch position value
                 usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
 
                 logging.info("----------------------------------------------------------------")
@@ -550,7 +551,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info(f"💵 **TOTAL LP VALUE (USD): ${total_value:.2f}**")
                 logging.info("----------------------------------------------------------------")
 
-                # update per-UID state
+                # Update core state
                 state_data = {
                     "wmatic_price": float(price),
                     "lp_usdt": float(usdt_amt),
@@ -561,6 +562,19 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info(f"Updating core_state_value: {state_data}")
                 update_lp_state(BOT_UID, state_data)
 
+                # Get latest state
+                current_stat = get_lp_state(BOT_UID)
+                logging.info(f"Updated state val: {current_stat}")
+
+                # --- Push directly to FastAPI route ---
+                try:
+                    # call route handler directly
+                    asyncio.run(lpstat(BOT_UID, current_stat))
+                    logging.info("✅ Pushed current_stat directly to API handler")
+                except Exception as api_e:
+                    logging.warning(f"❌ Failed to push LP stat to API handler: {api_e}")
+
+                # Check if position is still active
                 is_active = manager.check_position_status(active_id, price)
                 if not is_active:
                     logging.info("♻️ Position closed. Preparing to re-enter...")
@@ -568,17 +582,6 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     continue
                 else:
                     logging.info(f"🦄 Holding active position ID {active_id}. Price {price}")
-                    current_stat = get_lp_state(BOT_UID)
-                    logging.info(f"Updated state val: {current_stat}")
-
-                    # --- Push JSON to API endpoint ---
-                    try:
-                        api_url = f"http://127.0.0.1:8000/api/lpstat/{BOT_UID}"
-                        headers = {"Content-Type": "application/json"}
-                        requests.post(api_url, json=current_stat, headers=headers, timeout=5)
-                        logging.info(f"✅ Pushed current_stat to API: {api_url}")
-                    except Exception as api_e:
-                        logging.warning(f"❌ Failed to push LP stat to API: {api_e}")
 
             else:
                 logging.info(f"🦄 No active position. Preparing entry around {price}...")

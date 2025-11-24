@@ -26,6 +26,25 @@ NFT_MANAGER_ADDR = "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
 POOL_FEE = 3000
 TICK_SPACING = 60
 
+# Minimal pool ABI we need (slot0)
+POOL_ABI = [
+    {
+        "inputs": [],
+        "name": "slot0",
+        "outputs": [
+            {"internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160"},
+            {"internalType": "int24", "name": "tick", "type": "int24"},
+            {"internalType": "uint16", "name": "observationIndex", "type": "uint16"},
+            {"internalType": "uint16", "name": "observationCardinality", "type": "uint16"},
+            {"internalType": "uint16", "name": "observationCardinalityNext", "type": "uint16"},
+            {"internalType": "uint8", "name": "feeProtocol", "type": "uint8"},
+            {"internalType": "bool", "name": "unlocked", "type": "bool"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
 # NFT_MANAGER_ABI (same as before)
 NFT_MANAGER_ABI = [
     {"inputs":[{"internalType":"struct MintParams","name":"params","type":"tuple","components":[{"internalType":"address","name":"token0","type":"address"},{"internalType":"address","name":"token1","type":"address"},{"internalType":"uint24","name":"fee","type":"uint24"},{"internalType":"int24","name":"tickLower","type":"int24"},{"internalType":"int24","name":"tickUpper","type":"int24"},{"internalType":"uint256","name":"amount0Desired","type":"uint256"},{"internalType":"uint256","name":"amount1Desired","type":"uint256"},{"internalType":"uint256","name":"amount0Min","type":"uint256"},{"internalType":"uint256","name":"amount1Min","type":"uint256"},{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"deadline","type":"uint256"}]}],"name":"mint","outputs":[{"internalType":"uint256","name":"tokenId","type":"uint256"},{"internalType":"uint128","name":"liquidity","type":"uint128"},{"internalType":"uint256","name":"amount0","type":"uint256"},{"internalType":"uint256","name":"amount1","type":"uint256"}],"stateMutability":"payable","type":"function"},
@@ -37,7 +56,7 @@ NFT_MANAGER_ABI = [
 ]
 
 class UniswapV3Manager:
-    def __init__(self, owner_address=None, owner_private_key=None):
+    def __init__(self, owner_address=None, owner_private_key=None, pool_address: str = None):
         print("DEBUG: Initializing UniswapV3Manager class...")
 
         if owner_address:
@@ -48,6 +67,19 @@ class UniswapV3Manager:
 
         # store per-user private key (plaintext expected)
         self.owner_private_key = owner_private_key if owner_private_key else config.PRIVATE_KEY
+
+        # pool address (user should provide the correct Uniswap V3 pool address for WMATIC/USDT)
+        self.pool_address = w3.to_checksum_address(pool_address) if pool_address else None
+        self.pool = None
+        if self.pool_address:
+            try:
+                self.pool = w3.eth.contract(address=self.pool_address, abi=POOL_ABI)
+                logging.info(f"✅ Using on-chain pool at {self.pool_address} for slot0 pricing.")
+            except Exception as e:
+                logging.warning(f"⚠️ Failed to instantiate pool contract at {self.pool_address}: {e}")
+                self.pool = None
+        else:
+            logging.warning("⚠️ No pool_address provided — LP valuation will fall back to OKX price for center if needed. For exact matching, pass pool_address.")
 
         try:
             self.nft_manager = w3.eth.contract(address=NFT_MANAGER_ADDR, abi=NFT_MANAGER_ABI)
@@ -94,8 +126,6 @@ class UniswapV3Manager:
         try:
             config.OWNER = self.owner
             config.PRIVATE_KEY = self.owner_private_key
-            # reload utils module attributes that may have cached OWNER/PRIVATE_KEY if needed
-            # (not strictly necessary unless utils cached them at import-time)
             result = func(*args, **kwargs)
             return result
         finally:
@@ -117,7 +147,6 @@ class UniswapV3Manager:
 
     # ---------------------------
     # Small helper for building and sending tx signed by user private key
-    # (used for txs we build locally rather than via utils.send_tx)
     # ---------------------------
     def _send_tx_local(self, tx_dict):
         """
@@ -126,10 +155,8 @@ class UniswapV3Manager:
         Returns tx_hash hex or None.
         """
         try:
-            # ensure nonce and gas/gasPrice present
             if "nonce" not in tx_dict:
                 tx_dict["nonce"] = w3.eth.get_transaction_count(self.owner, "pending")
-            # Fill defaults for gasPrice if not provided
             if "gasPrice" not in tx_dict:
                 tx_dict["gasPrice"] = w3.eth.gas_price
             signed = w3.eth.account.sign_transaction(tx_dict, private_key=self.owner_private_key)
@@ -150,7 +177,48 @@ class UniswapV3Manager:
             return None
 
     # ---------------------------
+    # Pool helpers: slot0/tick/price
+    # ---------------------------
+    def get_pool_slot0(self):
+        """
+        Returns (sqrtPriceX96:int, tick:int) from the pool if pool was provided.
+        Otherwise returns (None, None).
+        """
+        if not self.pool:
+            return None, None
+        try:
+            slot0 = self.pool.functions.slot0().call()
+            sqrtPriceX96 = int(slot0[0])
+            tick = int(slot0[1])
+            return sqrtPriceX96, tick
+        except Exception as e:
+            logging.warning(f"⚠️ Failed to read slot0 from pool {self.pool_address}: {e}")
+            return None, None
+
+    def get_pool_price_and_tick(self):
+        """
+        Returns (price_float, tick_int) where price_float is token1/token0 in human units
+        derived from sqrtPriceX96. If pool not provided, returns (None, None).
+        """
+        sqrtPriceX96, tick = self.get_pool_slot0()
+        if sqrtPriceX96 is None:
+            return None, None
+        try:
+            # sqrtPrice (non-X96) = sqrtPriceX96 / 2**96
+            sqrtPrice = float(sqrtPriceX96) / (2 ** 96)
+            price_raw = sqrtPrice * sqrtPrice  # token1/token0 raw (no decimal scaling)
+            # adjust for decimals to get human price (token1 per token0)
+            # price_human = price_raw * 10^(dec0-dec1)
+            dec_adj = (self.dec0 - self.dec1)
+            price_human = float(price_raw) * (10 ** dec_adj)
+            return price_human, tick
+        except Exception as e:
+            logging.error(f"Error converting sqrtPriceX96 to human price: {e}")
+            return None, tick
+
+    # ---------------------------
     # get_tick_from_price & align_tick (improved & kept names)
+    # This method still exists for fallback or other callers.
     # ---------------------------
     def get_tick_from_price(self, price_float):
         try:
@@ -228,15 +296,36 @@ class UniswapV3Manager:
         else:
             logging.info("✅ Balance is healthy (near 50:50). No swap needed.")
 
-    # --- Mint (keeps names and logs) ---
-    def mint_position(self, center_price, range_pct=0.05, usdt_alloc=5.0):
+    # --- Action: Mint (With Clamping Logic) ---
+    def mint_position(self, center_price=None, range_pct=0.05, usdt_alloc=5.0):
+        """
+        center_price: if None and pool provided, uses on-chain pool price.
+        Otherwise falls back to provided price (e.g., OKX).
+        """
+        # If pool available, override center_price with on-chain price for accuracy
+        if self.pool:
+            pool_price, pool_tick = self.get_pool_price_and_tick()
+            if pool_price is not None:
+                center_price = pool_price
+
+        # if still None, try OKX fallback
+        if center_price is None:
+            center_price = get_pol_price_from_okx()
+            logging.warning("⚠️ center_price was None — falling back to OKX price for mint center.")
+
         logging.info(f"🦄 Calculating V3 Mint params. Center: {center_price}, Range: {range_pct*100}%")
 
         lower_price = center_price * (1 - range_pct)
         upper_price = center_price * (1 + range_pct)
 
-        tick_lower = self.align_tick(self.get_tick_from_price(lower_price))
-        tick_upper = self.align_tick(self.get_tick_from_price(upper_price))
+        # If pool available, use pool tick (more accurate) otherwise compute ticks from center_price
+        if self.pool:
+            # derive ticks from pool tick and mapping to price range: use get_tick_from_price for edges
+            tick_lower = self.align_tick(self.get_tick_from_price(lower_price))
+            tick_upper = self.align_tick(self.get_tick_from_price(upper_price))
+        else:
+            tick_lower = self.align_tick(self.get_tick_from_price(lower_price))
+            tick_upper = self.align_tick(self.get_tick_from_price(upper_price))
 
         if tick_lower > tick_upper:
             tick_lower, tick_upper = tick_upper, tick_lower
@@ -329,14 +418,23 @@ class UniswapV3Manager:
             return None
 
     # --- Check Active Position ---
-    def check_position_status(self, token_id, current_price):
+    def check_position_status(self, token_id, current_price=None):
+        """
+        If pool available, ignore provided current_price and use on-chain pool tick for correctness.
+        """
         try:
             pos = self.nft_manager.functions.positions(token_id).call()
             tick_lower = pos[5]
             tick_upper = pos[6]
             liquidity = pos[7]
 
-            current_tick = self.get_tick_from_price(current_price)
+            # determine current tick: prefer on-chain pool tick if available
+            if self.pool:
+                _, current_tick = self.get_pool_price_and_tick()
+                if current_tick is None:
+                    current_tick = self.get_tick_from_price(current_price) if current_price else 0
+            else:
+                current_tick = self.get_tick_from_price(current_price) if current_price else 0
 
             logging.info(f"🔍 Position Status: Tick {current_tick} vs Range [{tick_lower} - {tick_upper}]")
 
@@ -377,7 +475,6 @@ class UniswapV3Manager:
                     'from': self.owner, 'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
                     'gas': 700000, 'gasPrice': w3.eth.gas_price
                 })
-                # use utils.send_tx patched to user's creds
                 self._with_user_creds(send_tx, tx)
                 time.sleep(2)
             except Exception as e:
@@ -413,7 +510,11 @@ class UniswapV3Manager:
             logging.warning(f"Failed to retrieve active position ID: {e}")
             return None
 
-    def get_position_asset_value(self, token_id, current_price):
+    def get_position_asset_value(self, token_id, current_price=None):
+        """
+        Uses on-chain tick (if pool provided) to compute token amounts.
+        Returns (amount_usdt, amount_wmatic, total_usdt_value).
+        """
         try:
             pos = self.nft_manager.functions.positions(token_id).call()
             tick_lower = pos[5]
@@ -424,10 +525,18 @@ class UniswapV3Manager:
                 logging.info(f"Position ID {token_id} has zero liquidity.")
                 return 0.0, 0.0, 0.0
 
-            current_tick = self.get_tick_from_price(current_price)
+            # prefer on-chain pool tick if available
+            if self.pool:
+                # get current_tick from pool
+                _, current_tick = self.get_pool_price_and_tick()
+                if current_tick is None:
+                    current_tick = self.get_tick_from_price(current_price) if current_price else 0
+            else:
+                current_tick = self.get_tick_from_price(current_price) if current_price else 0
 
             L = float(liquidity)
 
+            # sqrt price (non-X96) = 1.0001^(tick/2)
             sqrt_price = 1.0001 ** (current_tick / 2.0)
             sqrt_price_lower = 1.0001 ** (tick_lower / 2.0)
             sqrt_price_upper = 1.0001 ** (tick_upper / 2.0)
@@ -462,7 +571,15 @@ class UniswapV3Manager:
                     amount_usdt = float(amount0_wei) / 1e6
                     amount_wmatic = float(amount1_wei) / 1e18
 
-            total_usdt_value = amount_usdt + (amount_wmatic * current_price)
+            # For total_usdt_value: if pool available, get on-chain pool price for WMATIC->USDT; else try provided current_price or OKX
+            if self.pool:
+                pool_price, _ = self.get_pool_price_and_tick()
+                price_for_calc = pool_price if pool_price is not None else (current_price or get_pol_price_from_okx())
+            else:
+                price_for_calc = current_price or get_pol_price_from_okx()
+
+            price_for_calc = price_for_calc or 0.0
+            total_usdt_value = amount_usdt + (amount_wmatic * float(price_for_calc))
 
             return amount_usdt, amount_wmatic, total_usdt_value
 
@@ -471,8 +588,8 @@ class UniswapV3Manager:
             return 0.0, 0.0, 0.0
 
 
-# --- Runner (keeps names & logs) ---
-def run_uniswap_v3_loop(poll_interval=60):
+# --- Updated Runner ---
+def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
     print("DEBUG: Thread started for Uniswap V3 Strategy...")
     logging.info("🦄 Uniswap V3 Strategy Started.")
 
@@ -482,18 +599,25 @@ def run_uniswap_v3_loop(poll_interval=60):
         try:
             if manager is None:
                 # create manager using global creds by default; your start_bot should create per-user manager
-                manager = UniswapV3Manager()
+                manager = UniswapV3Manager(pool_address=pool_address)
 
-            price = get_pol_price_from_okx()
+            # If pool configured, we'll use on-chain pool price for LP operations
+            if manager.pool:
+                pool_price, pool_tick = manager.get_pool_price_and_tick()
+                price = pool_price if pool_price is not None else get_pol_price_from_okx()
+            else:
+                price = get_pol_price_from_okx()
+
             if not price:
                 time.sleep(10)
                 continue
-            logging.info(f"💰 Current WMATIC price: {price:.4f} USDT")
+            logging.info(f"💰 Current WMATIC price: {price:.4f} USDT") # Log price here
 
             active_id = manager.get_active_position_id()
 
             if active_id:
 
+                # Use on-chain pool tick/price for valuation if available
                 usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
 
                 logging.info("----------------------------------------------------------------")
@@ -512,12 +636,19 @@ def run_uniswap_v3_loop(poll_interval=60):
 
             else:
                 logging.info(f"🦄 No active position. Preparing entry around {price}...")
-                manager.balance_wallet_50_50(price)
+                # Before minting, use on-chain price if pool available to rebalance and compute alloc
+                if manager.pool:
+                    pool_price, _ = manager.get_pool_price_and_tick()
+                    use_price = pool_price if pool_price is not None else price
+                else:
+                    use_price = price
+
+                manager.balance_wallet_50_50(use_price)
 
                 usdt_balance = get_onchain_token_balance(usdt, manager.owner)
-                alloc_size = min(usdt_balance * 0.9, 50.0)
+                alloc_size = min(usdt_balance * 0.9, 50.0) # Use 90% of USDT or max 50 USDT
 
-                manager.mint_position(center_price=price, range_pct=0.10, usdt_alloc=alloc_size)
+                manager.mint_position(center_price=use_price, range_pct=0.10, usdt_alloc=alloc_size)
 
             time.sleep(poll_interval)
 
@@ -540,7 +671,8 @@ if __name__ == "__main__":
     logging.info("🚀 UniswapV3 bot initialized.")
     try:
         logging.info("⚙️ Starting UniswapV3 Strategy Loop...")
-        run_uniswap_v3_loop()  # 👈 this calls your actual rebalancing logic
+        # pass pool_address here if you have it, e.g. run_uniswap_v3_loop(pool_address="0x...")
+        run_uniswap_v3_loop()
     except KeyboardInterrupt:
         logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
     except Exception as e:

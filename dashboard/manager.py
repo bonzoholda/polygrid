@@ -157,6 +157,8 @@ def start_bot(uid, strategy="grid_dca"):
     env["OWNER_ADDR"] = user["address"]
     env["PRIVATE_KEY"] = decrypt_key(user["encrypted_key"])
     env["BOT_STRATEGY"] = strategy
+    env["BOT_UID"] = str(uid)   # <-- IMPORTANT!
+
 
     with open(log_file, "a", buffering=1, encoding="utf-8") as log_handle:
         log_handle.write(f"\n=== Starting bot for {user['name']} (strategy: {strategy}) ===\n")

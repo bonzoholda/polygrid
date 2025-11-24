@@ -13,31 +13,10 @@ if root_dir not in sys.path:
 from config import usdt, wmatic
 from uniswap_v3_manager import UniswapV3Manager
 
-def get_wmatic_price_slot0():
-    try:
-        try:
-            from config import UNISWAP_POOL_ADDR
-        except Exception:
-            UNISWAP_POOL_ADDR = None
-
-        if UNISWAP_POOL_ADDR:
-            mgr = UniswapV3Manager(owner_address=None, pool_address=UNISWAP_POOL_ADDR)
-        else:
-            mgr = UniswapV3Manager(owner_address=None)
-
-        pool_price, _ = mgr.get_pool_price_and_tick()
-        if pool_price is None:
-            logging.error("❌ Failed to get pool_price from UniswapV3Manager (slot0).")
-            return None
-
-        # round to 6 decimals for frontend friendliness
-        return round(float(pool_price), 6)
-    except Exception as e:
-        logging.error(f"❌ Failed to get slot0 price via manager: {e}")
-        return None
 
 def fetch_portfolio(uid: int):
     from dashboard.manager import get_user
+    from core.state import get_lp_state
 
     try:
         user = get_user(uid)
@@ -46,47 +25,45 @@ def fetch_portfolio(uid: int):
 
         owner_address = user["address"]
 
+        # -------- WALLET BALANCES --------
         usdt_balance_raw = usdt.functions.balanceOf(owner_address).call()
         wmatic_balance_raw = wmatic.functions.balanceOf(owner_address).call()
 
         usdt_balance = float(usdt_balance_raw) / 1e6
         wmatic_balance = float(wmatic_balance_raw) / 1e18
 
-        wmatic_price = get_wmatic_price_slot0()
-        if wmatic_price is None:
-            logging.error("❌ Cannot fetch WMATIC on-chain price (slot0). Falling back to 0.0")
-            wmatic_price = 0.0
-
+        # Defaults
+        wmatic_price = 0.0
         lp_value_usdt = 0.0
-        lp_assets_usdt = 0.0
-        lp_assets_wmatic = 0.0
-        has_lp = False
+        lp_details = {"active": False, "usdt": 0.0, "wmatic": 0.0}
 
+        # -------- LP STATE (ALWAYS TRUST THIS) --------
         try:
-            try:
-                from config import UNISWAP_POOL_ADDR
-                mgr = UniswapV3Manager(owner_address=owner_address, pool_address=UNISWAP_POOL_ADDR)
-            except Exception:
-                mgr = UniswapV3Manager(owner_address=owner_address)
+            lp = get_lp_state()
 
-            pos_id = mgr.get_active_position_id()
+            if lp and lp.get("active"):
+                wmatic_price = lp["price"]
+                lp_value_usdt = lp["lp_total_value"]
 
-            if pos_id:
-                u_val, m_val, total = mgr.get_position_asset_value(pos_id, wmatic_price)
-                lp_value_usdt = float(total)
-                lp_assets_usdt = float(u_val)
-                lp_assets_wmatic = float(m_val)
-                has_lp = True
-                logging.info(f"🦄 LP found for user {uid}: {total:.2f} USDT")
+                lp_details = {
+                    "active": True,
+                    "usdt": lp["lp_usdt"],
+                    "wmatic": lp["lp_wmatic"]
+                }
+
+                logging.info(f"🦄 Loaded LP state for uid={uid}: {lp_value_usdt:.2f} USDT")
+
             else:
-                logging.info(f"User {uid} has no V3 LP positions.")
+                logging.info(f"No LP state for user {uid}")
 
         except Exception as e:
-            logging.warning(f"⚠️ LP fetch failed for user {uid}: {e}")
+            logging.warning(f"⚠️ LP state read failed for user {uid}: {e}")
 
+        # -------- PORTFOLIO CALCULATIONS --------
         wallet_value = usdt_balance + (wmatic_balance * wmatic_price)
         total_value = wallet_value + lp_value_usdt
 
+        # -------- RETURN RESPONSE --------
         return {
             "uid": uid,
             "owner": owner_address,
@@ -95,11 +72,7 @@ def fetch_portfolio(uid: int):
             "wmatic_price": wmatic_price,
             "wallet_value_usdt": wallet_value,
             "lp_value_usdt": lp_value_usdt,
-            "lp_details": {
-                "active": has_lp,
-                "usdt": lp_assets_usdt,
-                "wmatic": lp_assets_wmatic,
-            },
+            "lp_details": lp_details,
             "total_value_usdt": total_value
         }
 

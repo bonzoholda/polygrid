@@ -72,6 +72,9 @@ def fetch_portfolio(uid: int):
         return {
             "uid": uid,
             "owner": owner_address,
+            "usdt_balance": usdt_balance,
+            "wmatic_balance": wmatic_balance,
+            "wmatic_price": wmatic_price,            
             "wallet_value_usdt": wallet_value,
             "lp_value_usdt": lp_usdt_value,
             "lp_details": {

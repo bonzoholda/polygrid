@@ -512,10 +512,11 @@ class UniswapV3Manager:
             logging.error(f"Error calculating position value for ID {token_id}: {e}")
             return 0.0, 0.0, 0.0
 
-
 # -------------------------
 # Runner (updates per-UID state)
 # -------------------------
+import requests  # make sure requests is installed
+
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
     logging.info("🦄 Uniswap V3 Strategy Started.")
     manager = None
@@ -570,6 +571,15 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     current_stat = get_lp_state(BOT_UID)
                     logging.info(f"Updated state val: {current_stat}")
 
+                    # --- Push JSON to API endpoint ---
+                    try:
+                        api_url = f"http://127.0.0.1:8000/api/lpstat/{BOT_UID}"
+                        headers = {"Content-Type": "application/json"}
+                        requests.post(api_url, json=current_stat, headers=headers, timeout=5)
+                        logging.info(f"✅ Pushed current_stat to API: {api_url}")
+                    except Exception as api_e:
+                        logging.warning(f"❌ Failed to push LP stat to API: {api_e}")
+
             else:
                 logging.info(f"🦄 No active position. Preparing entry around {price}...")
 
@@ -603,6 +613,8 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
         except Exception as e:
             logging.exception(f"CRITICAL THREAD ERROR: {e}")
             time.sleep(10)
+
+
 
 if __name__ == "__main__":
     import logging, time

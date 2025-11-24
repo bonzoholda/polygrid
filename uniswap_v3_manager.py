@@ -665,7 +665,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     continue
                 else:
                     logging.info(f"🦄 Holding active position ID {active_id}. Price {price}")
-                    current_stat = get_lp_state()
+                    current_stat = get_lp_state(BOT_UID)
                     logging.info(f"Updated state val: {current_stat}")
 
             else:

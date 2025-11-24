@@ -7,6 +7,11 @@ _state_lock = Lock()
 # each state: {"price": float, "lp_usdt": float, "lp_wmatic": float, "lp_total_value": float, "active": bool}
 _lp_state_map = {}
 
+price = 0.0
+usdt = 0.0
+wmatic = 0.0
+total = 0.0
+
 def update_lp_state(uid: int, state_data):
     """
     Update LP state for a specific user (uid).

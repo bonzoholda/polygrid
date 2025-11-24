@@ -23,10 +23,6 @@ import config
 
 from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
 
-# Import the per-uid state helpers
-from core.state import update_lp_state, get_lp_state
-from dashboard.app import lpstat  # <-- FastAPI route handler
-import asyncio
 
 # The UID associated with the bot's configuration/owner (populated by start_bot via env)
 BOT_UID = int(os.getenv("BOT_UID", "0"))
@@ -517,6 +513,13 @@ class UniswapV3Manager:
 # -------------------------
 # Runner (updates per-UID state)
 # -------------------------
+
+import logging
+import time
+from uniswap_v3_manager import UniswapV3Manager
+from core.state import update_lp_state, get_lp_state
+import asyncio
+
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
     logging.info("🦄 Uniswap V3 Strategy Started.")
     manager = None

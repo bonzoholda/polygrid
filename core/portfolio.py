@@ -10,7 +10,7 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from config import usdt, wmatic
-from core.state import get_lp_state
+from state import get_lp_state
 
 
 def fetch_portfolio(uid: int):

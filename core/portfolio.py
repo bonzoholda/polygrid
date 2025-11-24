@@ -45,7 +45,7 @@ def fetch_portfolio(uid: int):
             
             # 🔥 DIRECT BYPASS: Initialize Manager with the specific user address
             # This forces the manager to look at THIS user's wallet, regardless of config.
-            v3_mgr = UniswapV3Manager(owner_address=owner_address)
+            v3_mgr = UniswapV3Manager(OWNER=owner_address)
             
             # Scan for positions
             active_id = v3_mgr.get_active_position_id()

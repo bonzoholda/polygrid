@@ -15,12 +15,7 @@ from config import usdt, wmatic
 from uniswap_v3_manager import UniswapV3Manager
 from core.state import get_lp_state
 
-
-lp_value_usdt = 0.0
-lp_assets_usdt = 0.0
-lp_assets_wmatic = 0.0
-has_lp = False
-wmatic_price = 0.0
+BOT_UID = int(os.getenv("BOT_UID", "0"))
 
 def _normalize_price(price):
     try:
@@ -66,7 +61,7 @@ def fetch_portfolio(uid: int):
         # -------------------------------
         # Prefer reading LP state (set by the running bot)
         # -------------------------------
-        lp_state = get_lp_state(owner_id)
+        lp_state = get_lp_state(BOT_UID)
         if not lp_state:
             logging.warning(f"No LP state for uid {uid}, assuming inactive LP")
             wmatic_price = 0.0

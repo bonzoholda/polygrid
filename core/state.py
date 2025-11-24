@@ -1,12 +1,13 @@
+import os
 import json
 import logging
 from firebase_admin import initialize_app, firestore, credentials
 
+# Set up logging for visibility during execution
 logging.basicConfig(level=logging.INFO)
 
 # --- Global Firebase Variables (Provided by Runtime) ---
-# NOTE: These variables are expected to be available in the execution environment.
-# We parse them from the environment.
+# NOTE: These variables are read from the execution environment.
 APP_ID = os.environ.get('__app_id', 'default-app-id')
 FIREBASE_CONFIG_JSON = os.environ.get('__firebase_config', '{}')
 
@@ -14,38 +15,37 @@ FIREBASE_CONFIG_JSON = os.environ.get('__firebase_config', '{}')
 db = None
 try:
     if FIREBASE_CONFIG_JSON:
-        # 1. Prepare credentials using the config provided by the environment
+        # 1. Parse the configuration JSON provided by the environment
         firebase_config = json.loads(FIREBASE_CONFIG_JSON)
         
-        # We need to construct a credential object that can be initialized globally
-        # If running in a secure environment where firebase_admin is used, the 
-        # config often contains the keys needed for service account initialization.
-        # For this controlled environment, we rely on the runtime handling the credentials,
-        # but we must initialize the app context.
+        # 2. Create service account credentials from the config dict. 
+        # This is required by the Python firebase_admin SDK.
+        cred = credentials.Certificate(firebase_config)
         
-        # A simple, secure way to handle initialization:
+        # 3. Initialize the app. We wrap this in a try/except to handle the 
+        # ValueError that occurs if the function is called multiple times 
+        # (e.g., in a testing or restart scenario).
         try:
-            # Check if an app is already initialized to prevent errors
-            initialize_app(options=firebase_config)
+            initialize_app(cred)
         except ValueError:
-            # If the app is already initialized, just continue (e.g., if running multiple times)
-            pass 
+            # This is expected if the app is already initialized. Continue.
+            pass
         
+        # 4. Get the Firestore client instance
         db = firestore.client()
         logging.info("✅ Firestore client initialized successfully.")
     else:
         logging.error("❌ __firebase_config environment variable is missing or empty.")
 except Exception as e:
-    logging.error(f"❌ Failed to initialize Firebase: {e}")
+    # Catch any critical failure during initialization (e.g., bad JSON, network)
+    logging.error(f"❌ CRITICAL: Failed to initialize Firebase: {e}")
     db = None
 
 
 def save_lp_state(bot_id: int, state_updates: dict):
     """
-    Saves or updates the bot's state dictionary to Firestore.
-    
-    The state is saved in the public shared space so that the portfolio 
-    API can easily read it.
+    Saves or updates the bot's LP state dictionary to the public Firestore path.
+    This data is used by the external API to report the bot's portfolio status.
     Path: /artifacts/{__app_id}/public/data/bot_states/{bot_id}
 
     Args:
@@ -63,15 +63,10 @@ def save_lp_state(bot_id: int, state_updates: dict):
         doc_ref = db.document(doc_path)
 
         # Merge the incoming LP data into the main document. 
-        # This allows other functions (like wallet balance reporters) to update 
-        # other fields without overwriting this data.
+        # This is safe and prevents overwriting other state fields.
         doc_ref.set(state_updates, merge=True)
         
         logging.info(f"💾 Successfully saved LP state for Bot {bot_id} to Firestore.")
 
     except Exception as e:
         logging.error(f"❌ Error saving state for Bot {bot_id}: {e}")
-        logging.debug(f"State attempted to save: {state_updates}")
-
-# NOTE: The old 'update_lp_state' is now replaced by 'save_lp_state' which handles 
-# dictionary inputs, aligning with the new central state structure.

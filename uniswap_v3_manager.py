@@ -654,7 +654,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     "lp_value_usdt": total_value,
                     "active": True
                 }
-                logging.info(f"Updating core_state_value...")
+                logging.info(f"Updating core_state_value: {state_data}")
                 update_lp_state(BOT_UID, state_data)
                 
                 # Check if position is still in range

@@ -68,20 +68,14 @@ def fetch_portfolio(uid: int):
         # -------------------------------
         lp_state = get_lp_state(owner_id)
 
-        if lp_state:
-            # Use stored state (this was updated by uniswap_v3_manager for that uid)
-            try:
-                wmatic_price = lp_state.get("price")
-                lp_assets_usdt = float(lp_state.get("lp_usdt", 0.0))
-                lp_assets_wmatic = float(lp_state.get("lp_wmatic", 0.0))
-                lp_value_usdt = float(lp_state.get("lp_total_value", 0.0))
-                has_lp = bool(lp_state.get("active", False))
-                logging.info(f"Using stored LP state for uid {uid}: price={wmatic_price}, lp_total={lp_value_usdt}")
-            except Exception as e:
-                logging.warning(f"Failed to parse lp_state for uid {uid}: {e}")
-                lp_state = None
+        wmatic_price = lp_state.get("price")
+        lp_assets_usdt = float(lp_state.get("lp_usdt", 0.0))
+        lp_assets_wmatic = float(lp_state.get("lp_wmatic", 0.0))
+        lp_value_usdt = float(lp_state.get("lp_total_value", 0.0))
+        has_lp = bool(lp_state.get("active", False))
+        logging.info(f"Using stored LP state for uid {uid}: price={wmatic_price}, lp_total={lp_value_usdt}")
 
-
+        
         # -------------------------------
         # Combined portfolio value
         # -------------------------------

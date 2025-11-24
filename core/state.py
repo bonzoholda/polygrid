@@ -11,6 +11,7 @@ price = 0.0
 usdt = 0.0
 wmatic = 0.0
 total = 0.0
+active = false
 
 def update_lp_state(uid: int, state_data):
     """

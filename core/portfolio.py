@@ -61,7 +61,7 @@ def fetch_portfolio(uid: int):
         # -------------------------------
         # Prefer reading LP state (set by the running bot)
         # -------------------------------
-        lp_state = get_lp_state(BOT_UID)
+        lp_state = get_lp_state(uid)
         logging.info(f"Extracting state: {lp_state}")
         
         if not lp_state:

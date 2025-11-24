@@ -20,7 +20,7 @@ lp_value_usdt = 0.0
 lp_assets_usdt = 0.0
 lp_assets_wmatic = 0.0
 has_lp = False
-wmatic_price = None
+wmatic_price = 0.0
 
 def _normalize_price(price):
     try:

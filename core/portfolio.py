@@ -68,10 +68,10 @@ def fetch_portfolio(uid: int):
         if lp_state:
             # Use stored state (this was updated by uniswap_v3_manager for that uid)
             try:
-                wmatic_price = lp_state.get("price") or lp_state.get("wmatic_price")
+                wmatic_price = lp_state.get("price")
                 lp_assets_usdt = float(lp_state.get("lp_usdt", 0.0))
                 lp_assets_wmatic = float(lp_state.get("lp_wmatic", 0.0))
-                lp_value_usdt = float(lp_state.get("lp_total_value", lp_state.get("lp_value_usdt", 0.0)))
+                lp_value_usdt = float(lp_state.get("lp_total_value", 0.0))
                 has_lp = bool(lp_state.get("active", False))
                 logging.info(f"Using stored LP state for uid {uid}: price={wmatic_price}, lp_total={lp_value_usdt}")
             except Exception as e:
@@ -101,26 +101,9 @@ def fetch_portfolio(uid: int):
                     except Exception:
                         pass
 
-                pos_id = mgr.get_active_position_id()
-                if pos_id:
-                    u_amt, m_amt, total_val = mgr.get_position_asset_value(pos_id, wmatic_price)
-                    lp_assets_usdt = float(u_amt)
-                    lp_assets_wmatic = float(m_amt)
-                    lp_value_usdt = float(total_val)
-                    has_lp = True
-                    logging.info(f"🦄 Direct on-chain LP calc for user {uid}: ${lp_value_usdt:.2f}")
-                else:
-                    logging.info(f"User {uid} has no V3 LP positions (direct on-chain).")
             except Exception as e:
                 logging.warning(f"⚠️ LP direct fetch failed for user {uid}: {e}")
 
-        # -------------------------------
-        # Final price normalization
-        # -------------------------------
-        wmatic_price = _normalize_price(wmatic_price) if wmatic_price is not None else None
-        # If still None, set to 0 to avoid crazy arithmetic in frontend
-        if wmatic_price is None:
-            wmatic_price = 0.0
 
         # -------------------------------
         # Combined portfolio value

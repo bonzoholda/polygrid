@@ -20,20 +20,24 @@ from uniswap_v3_manager import UniswapV3Manager
 
 def get_wmatic_price_slot0():
     """
-    Fetch price using Uniswap V3 slot0 sqrtPriceX96, identical to `uniswap_v3_manager.py`.
-    This returns WMATIC priced in USDT.
+    Fetch price using Uniswap V3 slot0 sqrtPriceX96.
+    Pulls the pool instance from UniswapV3Manager to avoid missing globals.
     """
     try:
-        # Import pool directly from the manager (same instance)
-        from uniswap_v3_manager import UNISWAP_POOL
+        # Create a temporary manager instance (address irrelevant for price)
+        mgr = UniswapV3Manager(owner_address=None)
         
-        slot0 = UNISWAP_POOL.functions.slot0().call()
+        # Access the pool initialized inside the manager
+        pool = mgr.pool
+
+        # Fetch slot0
+        slot0 = pool.functions.slot0().call()
         sqrtPriceX96 = slot0[0]
 
-        # Price calculation
+        # Price formula
         price = (sqrtPriceX96 ** 2) / (2 ** 192)
 
-        # Adjust decimals (WMATIC 18 -> USDT 6)
+        # Adjust decimals: WMATIC (18) → USDT (6)
         adjusted_price = price * (10 ** (18 - 6))
 
         return float(adjusted_price)
@@ -41,6 +45,7 @@ def get_wmatic_price_slot0():
     except Exception as e:
         logging.error(f"❌ Failed to get slot0 price: {e}")
         return None
+
 
 
 

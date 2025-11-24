@@ -10,11 +10,11 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from utils import w3
-from config import usdt, wmatic
+from config import usdt, wmatic, UNISWAP_POOL_ADDR
 from uniswap_v3_manager import UniswapV3Manager
 from core.state import get_lp_state
 
-manager = UniswapV3Manager()
+manager = UniswapV3Manager(UNISWAP_POOL_ADDR)
 BOT_UID = int(os.getenv("BOT_UID", "0"))
 
 def _normalize_price(price):

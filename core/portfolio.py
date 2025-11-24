@@ -42,6 +42,7 @@ def fetch_portfolio(uid: int):
             return {"error": f"User {uid} not found"}
 
         owner_address = user["address"]
+        owner_id = user["id"]
         # ensure checksum
         try:
             owner_address = w3.to_checksum_address(owner_address)
@@ -65,7 +66,7 @@ def fetch_portfolio(uid: int):
         # -------------------------------
         # Prefer reading LP state (set by the running bot)
         # -------------------------------
-        lp_state = get_lp_state(uid)
+        lp_state = get_lp_state(owner_id)
 
         if lp_state:
             # Use stored state (this was updated by uniswap_v3_manager for that uid)

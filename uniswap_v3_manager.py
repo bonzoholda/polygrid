@@ -21,6 +21,9 @@ import config
 
 from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
 from core.state import update_lp_state
+import os
+
+BOT_UID = int(os.getenv("BOT_UID", "0"))
 
 # --- V3 Constants ---
 NFT_MANAGER_ADDR = "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
@@ -628,7 +631,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info("----------------------------------------------------------------")
 
                 update_lp_state(
-                    uid=uid,
+                    uid=BOT_UID,
                     price=price,
                     usdt=usdt_amt,
                     wmatic=wmatic_amt,

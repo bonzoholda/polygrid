@@ -652,12 +652,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     "lp_usdt": usdt_amt,
                     "lp_wmatic": wmatic_amt,
                     "lp_value_usdt": total_value,
-                    "lp_details": {
-                        "active": True,
-                        "usdt": usdt_amt,
-                        "wmatic": wmatic_amt,
-                        "token_id": active_id
-                    }
+                    "active": True
                 }
                 update_lp_state(BOT_UID, state_data)
                 
@@ -680,12 +675,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     "lp_usdt": 0.0,
                     "lp_wmatic": 0.0,
                     "lp_value_usdt": 0.0,
-                    "lp_details": {
-                        "active": False,
-                        "usdt": 0.0,
-                        "wmatic": 0.0,
-                        "token_id": None
-                    }
+                    "active": False
                 }
                 update_lp_state(BOT_UID, inactive_state_data)
                 

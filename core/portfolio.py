@@ -39,7 +39,7 @@ def fetch_portfolio(uid: int):
 
         # -------- LP STATE (ALWAYS TRUST THIS) --------
         try:
-            lp = get_lp_state()
+            lp = get_lp_state(uid)
 
             if lp and lp.get("active"):
                 wmatic_price = lp["price"]

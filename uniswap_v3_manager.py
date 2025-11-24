@@ -214,31 +214,239 @@ class UniswapV3Manager:
         except Exception:
             return (int(tick) // TICK_SPACING) * TICK_SPACING
 
-    # balance_wallet_50_50, mint_position, check_position_status, close_position, get_active_position_id,
-    # get_position_asset_value all remain as in your working logic. (Keep your existing implementations.)
-    # For brevity in this snippet I assume you keep your exact earlier implementations.
-    # Make sure they remain present in the file unchanged.
+    # --- Auto-Balancer (uses user's balances) ---
+    def balance_wallet_50_50(self, current_price_usdt):
+        logging.info("⚖️ Checking wallet balance for 50:50 split...")
 
-    def get_active_position_id(self):
-        """
-        Returns the first active LP position NFT for this owner.
-        """
         try:
-            balance = self.nft_manager.functions.balanceOf(self.owner).call()
-            if balance == 0:
-                return None
-    
-            # Return the newest position (last index)
-            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(
-                self.owner, balance - 1
-            ).call()
-    
-            return token_id
-    
+            bal_usdt = get_onchain_token_balance(usdt, self.owner)
+            bal_wmatic = get_onchain_token_balance(wmatic, self.owner)
         except Exception as e:
-            logging.error(f"❌ get_active_position_id() failed: {e}")
+            logging.error(f"Error reading balances for 50:50: {e}")
+            return
+
+        val_usdt = float(bal_usdt)
+        val_wmatic = float(bal_wmatic) * float(current_price_usdt)
+        total_val = val_usdt + val_wmatic
+
+        if total_val < 5.0:
+            logging.warning("⚠️ Wallet balance too low (< $5) to balance.")
+            return
+
+        try:
+            usdt_ratio = val_usdt / total_val
+        except Exception:
+            usdt_ratio = 1.0
+        logging.info(f"⚖️ Ratio: USDT {usdt_ratio*100:.1f}% | WMATIC {(1-usdt_ratio)*100:.1f}%")
+
+        if usdt_ratio > 0.60:
+            surplus_usdt = val_usdt - (total_val * 0.5)
+            swap_amt = surplus_usdt
+            logging.info(f"⚖️ Rebalancing: Swapping {swap_amt:.2f} USDT -> WMATIC")
+            try:
+                # use utils.swap_usdt_to_wmatic but with user creds patched
+                self._with_user_creds(swap_usdt_to_wmatic, swap_amt)
+            except Exception as e:
+                logging.error(f"swap_usdt_to_wmatic failed: {e}")
+            time.sleep(5)
+
+        elif usdt_ratio < 0.40:
+            surplus_wmatic_val = val_wmatic - (total_val * 0.5)
+            surplus_wmatic_amt = surplus_wmatic_val / current_price_usdt
+            swap_amt = surplus_wmatic_amt
+            logging.info(f"⚖️ Rebalancing: Swapping {swap_amt:.2f} WMATIC -> USDT")
+            try:
+                self._with_user_creds(swap_wmatic_to_usdt, swap_amt)
+            except Exception as e:
+                logging.error(f"swap_wmatic_to_usdt failed: {e}")
+            time.sleep(5)
+        else:
+            logging.info("✅ Balance is healthy (near 50:50). No swap needed.")
+
+    # --- Mint (keeps names and logs) ---
+    def mint_position(self, center_price, range_pct=0.05, usdt_alloc=5.0):
+        logging.info(f"🦄 Calculating V3 Mint params. Center: {center_price}, Range: {range_pct*100}%")
+
+        lower_price = center_price * (1 - range_pct)
+        upper_price = center_price * (1 + range_pct)
+
+        tick_lower = self.align_tick(self.get_tick_from_price(lower_price))
+        tick_upper = self.align_tick(self.get_tick_from_price(upper_price))
+
+        if tick_lower > tick_upper:
+            tick_lower, tick_upper = tick_upper, tick_lower
+
+        # decimals
+        if self.is_wmatic_zero:
+            dec_wmatic = self.dec0
+            dec_usdt = self.dec1
+        else:
+            dec_wmatic = self.dec1
+            dec_usdt = self.dec0
+
+        usdt_wei_target = int(usdt_alloc * (10 ** dec_usdt))
+        try:
+            wmatic_wei_target = int((usdt_alloc / max(center_price, 1e-12)) * (10 ** dec_wmatic))
+        except Exception:
+            wmatic_wei_target = 0
+
+        try:
+            bal_t0 = int(self.token0_obj.functions.balanceOf(self.owner).call())
+            bal_t1 = int(self.token1_obj.functions.balanceOf(self.owner).call())
+        except Exception as e:
+            logging.error(f"❌ Failed to read on-chain balances: {e}")
             return None
 
+        if self.is_wmatic_zero:
+            target0 = wmatic_wei_target
+            target1 = usdt_wei_target
+        else:
+            target0 = usdt_wei_target
+            target1 = wmatic_wei_target
+
+        try:
+            amount0_final = min(target0, int(bal_t0 * 0.999))
+            amount1_final = min(target1, int(bal_t1 * 0.999))
+        except Exception as e:
+            logging.error(f"❌ Error clamping token amounts: {e}")
+            return None
+
+        if amount0_final == 0 and amount1_final == 0:
+            logging.error("❌ MINT FAILED: Cannot execute mint due to zero balance in both tokens.")
+            return None
+
+        logging.info(f"DEBUG: Approving {amount0_final} (T0) and {amount1_final} (T1) for mint...")
+
+        # Use approve_if_needed from utils but patched to use this user's creds
+        try:
+            if amount0_final > 0:
+                ok = self._with_user_creds(approve_if_needed, self.token0_obj, NFT_MANAGER_ADDR, amount0_final)
+                if not ok:
+                    logging.error("Approval failed for Token0")
+                    return None
+            if amount1_final > 0:
+                ok = self._with_user_creds(approve_if_needed, self.token1_obj, NFT_MANAGER_ADDR, amount1_final)
+                if not ok:
+                    logging.error("Approval failed for Token1")
+                    return None
+        except Exception as e:
+            logging.error(f"Approval exception: {e}")
+            return None
+
+        deadline = int(time.time()) + 300
+
+        params = {
+            'token0': self.token0,
+            'token1': self.token1,
+            'fee': POOL_FEE,
+            'tickLower': tick_lower,
+            'tickUpper': tick_upper,
+            'amount0Desired': amount0_final,
+            'amount1Desired': amount1_final,
+            'amount0Min': 0,
+            'amount1Min': 0,
+            'recipient': self.owner,
+            'deadline': deadline
+        }
+
+        logging.info("🦄 Sending Mint Transaction...")
+        try:
+            tx_build = self.nft_manager.functions.mint(params).build_transaction({
+                'from': self.owner,
+                'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
+                'gas': 900000,
+                'gasPrice': w3.eth.gas_price
+            })
+            # send via utils.send_tx but patched to use user's creds
+            return self._with_user_creds(send_tx, tx_build)
+        except Exception as e:
+            logging.error(f"Mint build failed: {e}")
+            return None
+
+    # --- Check Active Position ---
+    def check_position_status(self, token_id, current_price):
+        try:
+            pos = self.nft_manager.functions.positions(token_id).call()
+            tick_lower = pos[5]
+            tick_upper = pos[6]
+            liquidity = pos[7]
+
+            current_tick = self.get_tick_from_price(current_price)
+
+            logging.info(f"🔍 Position Status: Tick {current_tick} vs Range [{tick_lower} - {tick_upper}]")
+
+            if current_tick < tick_lower or current_tick > tick_upper:
+                logging.warning(f"🚨 Price Out of Range! Closing Position {token_id}...")
+                self.close_position(token_id)
+                return False
+
+            if liquidity == 0:
+                logging.warning("⚠️ Position has 0 liquidity (already closed?).")
+                return False
+
+            return True
+        except Exception as e:
+            logging.error(f"Error checking position status: {e}")
+            return True
+
+    def close_position(self, token_id):
+        logging.info(f"🔥 Closing Position NFT ID: {token_id}")
+
+        try:
+            pos = self.nft_manager.functions.positions(token_id).call()
+            liquidity = pos[7]
+        except Exception as e:
+            logging.error(f"Failed reading position for close: {e}")
+            return
+
+        if liquidity > 0:
+            try:
+                params_dec = {
+                    'tokenId': token_id,
+                    'liquidity': liquidity,
+                    'amount0Min': 0,
+                    'amount1Min': 0,
+                    'deadline': int(time.time())+300
+                }
+                tx = self.nft_manager.functions.decreaseLiquidity(params_dec).build_transaction({
+                    'from': self.owner, 'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
+                    'gas': 700000, 'gasPrice': w3.eth.gas_price
+                })
+                # use utils.send_tx patched to user's creds
+                self._with_user_creds(send_tx, tx)
+                time.sleep(2)
+            except Exception as e:
+                logging.error(f"Error decreasing liquidity: {e}")
+
+        try:
+            params_col = {
+                'tokenId': token_id, 'recipient': self.owner,
+                'amount0Max': 2**128-1, 'amount1Max': 2**128-1
+            }
+            tx2 = self.nft_manager.functions.collect(params_col).build_transaction({
+                'from': self.owner, 'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
+                'gas': 200000, 'gasPrice': w3.eth.gas_price
+            })
+            self._with_user_creds(send_tx, tx2)
+            logging.info("✅ Position Closed and Funds Collected.")
+        except Exception as e:
+            logging.error(f"Error collecting funds from position {token_id}: {e}")
+
+    def get_active_position_id(self):
+        try:
+            balance = self.nft_manager.functions.balanceOf(self.owner).call()
+
+            if balance == 0:
+                return None
+
+            logging.info(f"NFT Manager reports {balance} active positions.")
+
+            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, 0).call()
+            return token_id
+
+        except Exception as e:
+            logging.warning(f"Failed to retrieve active position ID: {e}")
+            return None
 
     def get_position_asset_value(self, token_id, current_price):
         try:

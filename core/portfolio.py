@@ -80,17 +80,21 @@ def fetch_portfolio(uid: int):
             active_id = manager.get_active_position_id()
             if active_id:
                 try:
-                    # get_pool_price_and_tick() may return tuple (price, tick)
-                    price_tuple = manager.get_pool_price_and_tick()
-                    if isinstance(price_tuple, (tuple, list)):
-                        wmatic_price = _normalize_price(price_tuple[0])
-                    else:
-                        wmatic_price = _normalize_price(price_tuple)
-
-                    usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, wmatic_price)
-                    lp_assets_usdt = float(usdt_amt)
-                    lp_assets_wmatic = float(wmatic_amt)
-                    lp_value_usdt = float(total_value)
+                    # Get normalized pool price in USDT
+                    wmatic_price = manager.get_pool_price_in_usdt()
+            
+                    # Get position liquidity in human-readable decimals
+                    token0_raw, token1_raw = manager.get_position_liquidity(active_id)
+                    usdt_amt = token0_raw / 1e6   # USDT has 6 decimals
+                    wmatic_amt = token1_raw / 1e18  # WMATIC has 18 decimals
+            
+                    # Total LP value in USDT
+                    total_value = usdt_amt + wmatic_amt * wmatic_price
+            
+                    # Assign LP details
+                    lp_assets_usdt = usdt_amt
+                    lp_assets_wmatic = wmatic_amt
+                    lp_value_usdt = total_value
                     has_lp = True
 
                     # Optionally update core state for future reads

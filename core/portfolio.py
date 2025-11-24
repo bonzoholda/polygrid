@@ -28,7 +28,7 @@ def _normalize_price(price):
 def fetch_portfolio(uid: int):
     from dashboard.manager import get_user
 
-    # Initialize safe defaults
+    # Safe defaults
     lp_assets_usdt = 0.0
     lp_assets_wmatic = 0.0
     lp_value_usdt = 0.0
@@ -49,20 +49,19 @@ def fetch_portfolio(uid: int):
             pass
 
         # -------------------------------
-        # Token balances
+        # Wallet balances
         # -------------------------------
         try:
             usdt_balance_raw = usdt.functions.balanceOf(owner_address).call()
             wmatic_balance_raw = wmatic.functions.balanceOf(owner_address).call()
+            usdt_balance = float(usdt_balance_raw) / 1e6
+            wmatic_balance = float(wmatic_balance_raw) / 1e18
         except Exception as e:
-            logging.error(f"❌ Failed to read on-chain balances for {owner_address}: {e}")
+            logging.error(f"❌ Failed to read on-chain balances: {e}")
             return {"error": "Failed to read on-chain balances"}
 
-        usdt_balance = float(usdt_balance_raw) / 1e6
-        wmatic_balance = float(wmatic_balance_raw) / 1e18
-
         # -------------------------------
-        # LP State
+        # LP state
         # -------------------------------
         lp_state = get_lp_state(uid)
         logging.info(f"Extracting LP state for uid {uid}: {lp_state}")
@@ -80,24 +79,22 @@ def fetch_portfolio(uid: int):
             active_id = manager.get_active_position_id()
             if active_id:
                 try:
-                    # Get normalized pool price in USDT
-                    wmatic_price = manager.get_pool_price_in_usdt()
-            
-                    # Get position liquidity in human-readable decimals
+                    # Get normalized WMATIC price in USDT
+                    wmatic_price = _normalize_price(manager.get_pool_price_in_usdt())
+
+                    # Get position liquidity (raw token amounts)
                     token0_raw, token1_raw = manager.get_position_liquidity(active_id)
-                    usdt_amt = token0_raw / 1e6   # USDT has 6 decimals
-                    wmatic_amt = token1_raw / 1e18  # WMATIC has 18 decimals
-            
+                    # Normalize token decimals
+                    usdt_amt = float(token0_raw) / 1e6   # USDT
+                    wmatic_amt = float(token1_raw) / 1e18  # WMATIC
+
                     # Total LP value in USDT
-                    total_value = usdt_amt + wmatic_amt * wmatic_price
-            
-                    # Assign LP details
                     lp_assets_usdt = usdt_amt
                     lp_assets_wmatic = wmatic_amt
-                    lp_value_usdt = total_value
+                    lp_value_usdt = lp_assets_usdt + lp_assets_wmatic * wmatic_price
                     has_lp = True
 
-                    # Optionally update core state for future reads
+                    # Optionally update core state
                     state_data = {
                         "wmatic_price": wmatic_price,
                         "lp_usdt": lp_assets_usdt,
@@ -106,7 +103,7 @@ def fetch_portfolio(uid: int):
                         "active": True
                     }
                     logging.info(f"Updating core state: {state_data}")
-                    # update_lp_state(uid, state_data)  # uncomment if you want to persist
+                    # update_lp_state(uid, state_data)  # uncomment to persist
                 except Exception as e:
                     logging.error(f"❌ Failed to fetch on-chain LP: {e}")
                     wmatic_price = 0.0

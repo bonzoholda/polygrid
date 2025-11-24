@@ -188,7 +188,7 @@
         }
         .portfolio-summary p {
             font-family: 'Exo 2', sans-serif;
-            font-size: 2.5rem;
+            font-size: 2.1rem;
             color: #e6edf3;
             margin: 0;
         }
@@ -296,11 +296,34 @@
                     <p id="wmaticBalance">--</p>
                 </div>
                 <div>
+                    <strong>Price (USDT)</strong>
+                    <p id="wmaticPrice">--</p>
+                </div>
+                <div>
+                    <strong>Cash Wallet (USDT)</strong>
+                    <p id="walletValue">--</p>
+                </div>
+            </div>
+
+            <div class="portfolio-summary">
+                <div>
+                    <strong>USDT LP</strong>
+                    <p id="usdtLP">--</p>
+                </div>
+                <div>
+                    <strong>WMATIC LP</strong>
+                    <p id="wmaticLP">--</p>
+                </div>
+                <div>
+                    <strong>LP Value (USDT)</strong>
+                    <p id="LPvalue">--</p>
+                </div>
+                <div>
                     <strong>Total (USDT)</strong>
                     <p id="portfolioValue">--</p>
                 </div>
             </div>
-
+            
             <div class="bot-stats">
                 <div><strong>Initial</strong><p id="initialVal">--</p></div>
                 <div><strong>Growth</strong><p id="growthPct">--%</p></div>
@@ -399,9 +422,14 @@
                     }
                     chart.update("none");
     
-                    document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
-                    document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
-                    document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
+                    document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(3);
+                    document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(3);
+                    document.getElementById("wmaticPrice").textContent = data.wmatic_price.toFixed(3);
+                    document.getElementById("walletValue").textContent = data.wallet_value_usdt.toFixed(3);
+                    document.getElementById("usdtLP").textContent = data.lp_details.usdt.toFixed(3);
+                    document.getElementById("wmaticLP").textContent = data.lp_details.wmatic.toFixed(3);
+                    document.getElementById("LPvalue").textContent = data.lp_value_usdt.toFixed(3);
+                    document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(3);
                 }
             } catch (err) {
                 console.warn("Failed to fetch portfolio data", err);

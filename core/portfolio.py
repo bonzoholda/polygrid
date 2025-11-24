@@ -9,7 +9,6 @@ root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
-# reuse w3 from utils for checksumming addresses
 from utils import w3
 from config import usdt, wmatic
 from uniswap_v3_manager import UniswapV3Manager
@@ -21,16 +20,20 @@ BOT_UID = int(os.getenv("BOT_UID", "0"))
 def _normalize_price(price):
     try:
         if price is None:
-            return None
-        price_f = float(price)
-        # small safety: if price looks like raw X96 squared integer, it's likely wrong; but manager returns normalized
-        # We still round to 6 decimals for human readability
-        return round(price_f, 6)
+            return 0.0
+        return round(float(price), 6)
     except Exception:
-        return None
+        return 0.0
 
 def fetch_portfolio(uid: int):
     from dashboard.manager import get_user
+
+    # Initialize safe defaults
+    lp_assets_usdt = 0.0
+    lp_assets_wmatic = 0.0
+    lp_value_usdt = 0.0
+    wmatic_price = 0.0
+    has_lp = False
 
     try:
         user = get_user(uid)
@@ -43,11 +46,10 @@ def fetch_portfolio(uid: int):
         try:
             owner_address = w3.to_checksum_address(owner_address)
         except Exception:
-            # fallback: use as-is
             pass
 
         # -------------------------------
-        # Token balances (human units)
+        # Token balances
         # -------------------------------
         try:
             usdt_balance_raw = usdt.functions.balanceOf(owner_address).call()
@@ -60,35 +62,57 @@ def fetch_portfolio(uid: int):
         wmatic_balance = float(wmatic_balance_raw) / 1e18
 
         # -------------------------------
-        # Prefer reading LP state (set by the running bot)
+        # LP State
         # -------------------------------
         lp_state = get_lp_state(uid)
-        logging.info(f"Extracting state: {lp_state}")
-        
-        if not lp_state:
-            # fallback: fetch directly
+        logging.info(f"Extracting LP state for uid {uid}: {lp_state}")
+
+        if lp_state:
+            # Use stored state
+            wmatic_price = _normalize_price(lp_state.get("wmatic_price", 0.0))
+            lp_assets_usdt = float(lp_state.get("lp_usdt", 0.0))
+            lp_assets_wmatic = float(lp_state.get("lp_wmatic", 0.0))
+            lp_value_usdt = float(lp_state.get("lp_total_value", 0.0))
+            has_lp = bool(lp_state.get("active", False))
+            logging.info(f"Using stored LP state: price={wmatic_price}, total={lp_value_usdt}")
+        else:
+            # Fallback: fetch directly from UniswapV3Manager
             active_id = manager.get_active_position_id()
             if active_id:
-                price = manager.get_pool_price_and_tick()  # <-- define price first                
-                usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
-                lp_state = {
-                    "wmatic_price": price,
-                    "lp_usdt": usdt_amt,
-                    "lp_wmatic": wmatic_amt,
-                    "lp_total_value": total_value,
-                    "active": True
-                }
-        else:
-            wmatic_price = lp_state.get("price", 0.0)
-            lp_assets_usdt = lp_state.get("lp_usdt", 0.0)
-            lp_assets_wmatic = lp_state.get("lp_wmatic", 0.0)
-            lp_value_usdt = lp_state.get("lp_total_value", 0.0)
-            has_lp = lp_state.get("active", False)
-            logging.info(f"Using stored LP state for uid {uid}: price={wmatic_price}, lp_total={lp_value_usdt}")
+                try:
+                    # get_pool_price_and_tick() may return tuple (price, tick)
+                    price_tuple = manager.get_pool_price_and_tick()
+                    if isinstance(price_tuple, (tuple, list)):
+                        wmatic_price = _normalize_price(price_tuple[0])
+                    else:
+                        wmatic_price = _normalize_price(price_tuple)
 
-        
+                    usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, wmatic_price)
+                    lp_assets_usdt = float(usdt_amt)
+                    lp_assets_wmatic = float(wmatic_amt)
+                    lp_value_usdt = float(total_value)
+                    has_lp = True
+
+                    # Optionally update core state for future reads
+                    state_data = {
+                        "wmatic_price": wmatic_price,
+                        "lp_usdt": lp_assets_usdt,
+                        "lp_wmatic": lp_assets_wmatic,
+                        "lp_total_value": lp_value_usdt,
+                        "active": True
+                    }
+                    logging.info(f"Updating core state: {state_data}")
+                    # update_lp_state(uid, state_data)  # uncomment if you want to persist
+                except Exception as e:
+                    logging.error(f"❌ Failed to fetch on-chain LP: {e}")
+                    wmatic_price = 0.0
+                    lp_assets_usdt = 0.0
+                    lp_assets_wmatic = 0.0
+                    lp_value_usdt = 0.0
+                    has_lp = False
+
         # -------------------------------
-        # Combined portfolio value
+        # Total portfolio
         # -------------------------------
         wallet_value = usdt_balance + (wmatic_balance * wmatic_price)
         total_value = wallet_value + lp_value_usdt

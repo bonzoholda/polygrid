@@ -21,7 +21,7 @@ import config
 
 from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
 # FIX 1: Change import from update_lp_state to save_lp_state
-from core.state import save_lp_state
+from core.state import update_lp_state
 import os
 
 # The UID associated with the bot's configuration/owner
@@ -659,7 +659,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                         "token_id": active_id
                     }
                 }
-                save_lp_state(BOT_UID, state_data)
+                update_lp_state(BOT_UID, state_data)
                 
                 # Check if position is still in range
                 is_active = manager.check_position_status(active_id, price)
@@ -687,7 +687,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                         "token_id": None
                     }
                 }
-                save_lp_state(BOT_UID, inactive_state_data)
+                update_lp_state(BOT_UID, inactive_state_data)
                 
                 # Use the most accurate price for rebalancing and allocation
                 use_price = price 

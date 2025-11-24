@@ -18,6 +18,9 @@ ROUTER_ADDR = Web3.to_checksum_address("0xa5E0829CaCED8fFDD4De3c43696c57F7D7A678
 USDT_ADDR = Web3.to_checksum_address("0xC2132D05D31c914a87C6611C10748AEb04B58e8F")
 WMATIC_ADDR = Web3.to_checksum_address("0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270")
 
+UNISWAP_POOL_ADDR = Web3.to_checksum_address("0x45dda9cb7c25131df268515131f647d726f50608")
+
+
 # ---------- ABIs ----------
 # You can put minimal ERC20 + Router ABIs here
 ERC20_ABI = [

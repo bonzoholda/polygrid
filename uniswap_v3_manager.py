@@ -34,8 +34,15 @@ NFT_MANAGER_ABI = [
 ]
 
 class UniswapV3Manager:
-    def __init__(self):
+    def __init__(self, owner_address=None):
         print("DEBUG: Initializing UniswapV3Manager class...")
+
+        # 💡 Ensure your internal logic uses the passed address if available
+        if owner_address:
+            self.owner = w3.to_checksum_address(owner_address)
+        else:
+            self.owner = w3.to_checksum_address(OWNER)        
+        
         try:
             self.nft_manager = w3.eth.contract(address=NFT_MANAGER_ADDR, abi=NFT_MANAGER_ABI)
             self.token0_obj = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)

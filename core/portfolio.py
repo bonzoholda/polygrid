@@ -67,12 +67,19 @@ def fetch_portfolio(uid: int):
         # Prefer reading LP state (set by the running bot)
         # -------------------------------
         lp_state = get_lp_state(owner_id)
-
-        wmatic_price = lp_state["price"]
-        lp_assets_usdt = lp_state["lp_usdt"]
-        lp_assets_wmatic = lp_state["lp_wmatic"]
-        lp_value_usdt = lp_state["lp_total_value"]
-        has_lp = lp_state["active"]
+        if not lp_state:
+            logging.warning(f"No LP state for uid {uid}, assuming inactive LP")
+            wmatic_price = 0.0
+            lp_assets_usdt = 0.0
+            lp_assets_wmatic = 0.0
+            lp_value_usdt = 0.0
+            has_lp = False
+        else:
+            wmatic_price = lp_state.get("price", 0.0)
+            lp_assets_usdt = lp_state.get("lp_usdt", 0.0)
+            lp_assets_wmatic = lp_state.get("lp_wmatic", 0.0)
+            lp_value_usdt = lp_state.get("lp_total_value", 0.0)
+            has_lp = lp_state.get("active", False)
         logging.info(f"Using stored LP state for uid {uid}: price={wmatic_price}, lp_total={lp_value_usdt}")
 
         

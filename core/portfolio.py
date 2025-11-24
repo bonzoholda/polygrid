@@ -22,13 +22,14 @@ def fetch_portfolio(uid: int):
             return {"error": f"User {uid} not found"}
 
         owner_address = user["address"]
+        owner_id = user["uid"]
 
         # Raw wallet balances
         usdt_bal = usdt.functions.balanceOf(owner_address).call() / 1e6
         wmatic_bal = wmatic.functions.balanceOf(owner_address).call() / 1e18
 
         # LP state updated by bot
-        lp = get_lp_state(user)
+        lp = get_lp_state(owner_id)
 
         if not lp:
             logging.info(f"No LP state for user {uid}")
@@ -49,7 +50,7 @@ def fetch_portfolio(uid: int):
         total_value = wallet_value + lp_value
 
         return {
-            "uid": user,
+            "uid": owner_id,
             "owner": owner_address,
 
             "usdt_balance": usdt_bal,

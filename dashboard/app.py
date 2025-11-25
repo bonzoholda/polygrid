@@ -99,6 +99,13 @@ def start(uid: int, request: Request, strategy: str = Form("grid_dca")):
     if not user or user["id"] != uid:
         return RedirectResponse("/login", status_code=303)
     start_bot(uid, strategy)
+
+    # Start Uniswap runner in same process (so _user_lp_state is shared)
+    import threading
+    from uniswap_v3_manager import run_uniswap_v3_loop
+    threading.Thread(target=run_uniswap_v3_loop, args=(uid,), daemon=True).start()
+    # ----------- 
+    
     return RedirectResponse("/", status_code=303)
 
 @app.api_route("/stop/{uid}", methods=["GET", "POST"])

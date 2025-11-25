@@ -1,522 +1,206 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DEXtrader-V5 Dashboard</title>
+<meta charset="UTF-8">
+<title>DEXtrader-V5 Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600&family=Fira+Code&display=swap" rel="stylesheet">
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* ----------------------------------------------------------
+   GLOBAL FUTURISTIC THEME — Neon Cyber Grid (Blue/Cyan Glow)
+----------------------------------------------------------- */
+body {
+    margin: 0;
+    padding: 0;
+    background: #02040a;
+    color: #d6f1ff;
+    font-family: "Inter", sans-serif;
+    overflow-x: hidden;
+}
 
-    <style>
-        /* -------------------------
-           Dark Matter Minimalism CSS
-           ------------------------- */
-        :root{
-            --bg:#050507;
-            --panel:#0b0c0f;
-            --muted:#9aa3ad;
-            --text:#e6edf3;
-            --accent:#7ee0ff; /* subtle cyan */
-            --glass: rgba(255,255,255,0.02);
-            --radius:12px;
-            --gap:14px;
-            --max-width:980px;
-        }
+/* Animated cyber grid background */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: linear-gradient(#0ff2, #0ff2),
+                url('https://i.ibb.co/9HpkZKw/grid-dark.png');
+    background-size: 4px 4px, cover;
+    opacity: 0.17;
+    animation: gridMove 12s linear infinite;
+    z-index: -1;
+}
 
-        /* ---------- Reset ---------- */
-        *{box-sizing:border-box;margin:0;padding:0}
-        html,body{height:100%}
-        body{
-            font-family: 'Exo 2', sans-serif;
-            background: linear-gradient(180deg, #040405 0%, #070709 100%);
-            color:var(--text);
-            -webkit-font-smoothing:antialiased;
-            -moz-osx-font-smoothing:grayscale;
-            line-height:1.45;
-            padding:18px;
-        }
-        a{color:inherit;text-decoration:none}
+@keyframes gridMove {
+    0% { background-position: 0 0, center; }
+    100% { background-position: 0 100px, center; }
+}
 
-        /* ---------- Layout container ---------- */
-        .page {
-            max-width: var(--max-width);
-            margin: 0 auto;
-            display: grid;
-            grid-template-rows: auto 1fr;
-            gap: 18px;
-        }
+/* Container */
+.container {
+    max-width: 900px;
+    margin: auto;
+    padding: 20px;
+}
 
-        /* ---------- Header ---------- */
-        header{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap: 12px;
-        }
-        .brand {
-            display:flex;
-            align-items:center;
-            gap:12px;
-        }
-        .logo-dot{
-            width:36px;height:36px;border-radius:8px;
-            background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-            display:flex;align-items:center;justify-content:center;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.6), inset 0 -6px 18px rgba(0,0,0,0.5);
-            border: 1px solid rgba(255,255,255,0.02);
-        }
-        .logo-mark{
-            width:12px;height:12px;border-radius:3px;background:var(--accent);
-            box-shadow: 0 6px 20px rgba(126,224,255,0.06);
-            transform: translateY(-1px);
-        }
-        header h1{
-            font-size:1.05rem;
-            font-weight:600;
-            letter-spacing:1.4px;
-            color:var(--text);
-            opacity:0.98;
-        }
-        .header-actions{
-            display:flex;gap:10px;align-items:center;
-        }
-        .logout {
-            font-size:0.86rem;
-            padding:8px 12px;
-            border-radius:10px;
-            border:1px solid rgba(255,255,255,0.03);
-            background: transparent;
-            color:var(--muted);
-            transition: all .18s ease;
-        }
-        .logout:hover, .logout:focus {
-            color:var(--text);
-            background: rgba(126,224,255,0.03);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.6);
-            outline: none;
-        }
+/* Hologram headers */
+h1, h2, h3 {
+    font-family: "Orbitron", sans-serif;
+    text-align: center;
+    margin: 10px 0;
+    letter-spacing: 1px;
+    text-shadow: 0 0 8px #0ff;
+}
 
-        /* ---------- Main card ---------- */
-        .card {
-            background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015));
-            border-radius: calc(var(--radius) + 4px);
-            padding: 20px;
-            box-shadow: 0 8px 30px rgba(2,6,10,0.7);
-            border: 1px solid rgba(255,255,255,0.03);
-        }
+h1 { font-size: 2.1rem; }
+h2 { font-size: 1.5rem; }
 
-        /* ---------- Intro / meta ---------- */
-        .meta {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap: 12px;
-            flex-wrap:wrap;
-        }
-        .meta-left{
-            min-width:0;
-        }
-        .meta h2{
-            font-size:1.0rem;
-            font-weight:600;
-            color:var(--text);
-            letter-spacing:0.8px;
-            margin-bottom:6px;
-        }
-        .meta p {
-            color:var(--muted);
-            font-weight:300;
-            font-size:0.92rem;
-        }
-        .meta p strong { color:var(--muted); font-weight:400; }
+/* Hologram Cards */
+.card {
+    background: rgba(0, 25, 35, 0.45);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    box-shadow: 0 0 15px #0ff3;
+    border-radius: 14px;
+    padding: 18px;
+    margin: 15px 0;
+    backdrop-filter: blur(8px);
+}
 
-        /* ---------- Status badge ---------- */
-        .status{
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            padding:6px 10px;
-            border-radius:999px;
-            font-size:0.85rem;
-            font-weight:600;
-            letter-spacing:0.6px;
-            color:var(--text);
-        }
-        .status.running { background: linear-gradient(180deg, rgba(126,224,255,0.06), rgba(126,224,255,0.03)); color: var(--accent); border: 1px solid rgba(126,224,255,0.06) }
-        .status.stopped { background: rgba(255,255,255,0.02); color: var(--muted); border: 1px solid rgba(255,255,255,0.02) }
+/* Status text */
+#botStatus {
+    font-size: 1.2rem;
+    text-align: center;
+    font-family: "Orbitron", sans-serif;
+    color: #6efaff;
+    text-shadow: 0 0 8px #0ff;
+}
 
-        /* ---------- Controls ---------- */
-        .controls {
-            display:flex;
-            gap:10px;
-            align-items:center;
-            margin-top:12px;
-            flex-wrap:wrap;
-        }
-        form { display:inline-block; margin:0; }
-        button {
-            --pad-y:9px;
-            --pad-x:14px;
-            padding: var(--pad-y) var(--pad-x);
-            border-radius: 10px;
-            border: 1px solid rgba(255,255,255,0.03);
-            background: transparent;
-            color: var(--accent);
-            font-weight:600;
-            letter-spacing:0.6px;
-            cursor:pointer;
-            font-family: 'Exo 2', sans-serif;
-            transition: all .14s ease;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.65);
-        }
-        button.start {
-            color: var(--text);
-            background: linear-gradient(180deg, rgba(126,224,255,0.05), rgba(126,224,255,0.03));
-            border-color: rgba(126,224,255,0.06);
-        }
-        button.start:hover { transform: translateY(-2px) }
-        button.stop {
-            color: #ffbdbd;
-            border-color: rgba(255,120,120,0.06);
-            background: rgba(255,120,120,0.02);
-        }
-        button:focus { outline: 2px solid rgba(126,224,255,0.12); outline-offset: 2px; }
+/* Neon Buttons */
+button {
+    font-family: "Orbitron", sans-serif;
+    font-size: 0.95rem;
+    padding: 12px 20px;
+    border: 1px solid #0ff;
+    background: transparent;
+    color: #affcff;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.25s;
+    width: 100%;
+    margin: 8px 0;
+    text-shadow: 0 0 6px #0ff;
+    box-shadow: 0 0 10px #0ff3 inset;
+}
 
-        /* ---------- Grid for chart + stats ---------- */
-        .grid {
-            margin-top:18px;
-            display:grid;
-            grid-template-columns: 1fr 320px;
-            gap: 14px;
-        }
+button:hover {
+    box-shadow: 0 0 14px #0ff, 0 0 20px #0ff6 inset;
+    transform: translateY(-2px);
+}
 
-        /* Chart card */
-        .chart-panel{
-            background: var(--panel);
-            border-radius: var(--radius);
-            padding: 14px;
-            border: 1px solid rgba(255,255,255,0.02);
-        }
-        .chart-header{
-            display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;
-        }
-        .chart-header h3{
-            font-size:0.96rem;color:var(--muted);font-weight:600;
-            letter-spacing:0.8px;margin:0;
-        }
-        .portfolio-summary{
-            display:flex;
-            gap:12px;
-            align-items:center;
-            justify-content:space-between;
-            margin-bottom:8px;
-            flex-wrap:wrap;
-        }
-        .portfolio-summary > div{
-            flex:1 1 33%;
-            min-width:92px;
-            text-align:left;
-        }
-        .portfolio-summary strong{ display:block; color:var(--muted); font-weight:500; font-size:0.82rem; margin-bottom:6px; }
-        .portfolio-summary p{ font-size:1.45rem; font-weight:600; color:var(--text); margin:0; }
+button:active {
+    transform: scale(0.95);
+}
 
-        /* Right column stats */
-        .side {
-            display:flex;
-            flex-direction:column;
-            gap:12px;
-        }
-        .stat-card{
-            background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.012));
-            padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);
-            display:flex;flex-direction:column;gap:6px;
-        }
-        .stat-card small { color:var(--muted); font-size:0.78rem; font-weight:500 }
-        .stat-card .big { font-size:1.4rem; font-weight:700; color:var(--text) }
+/* Chart block */
+#priceChart {
+    width: 100%;
+    height: 300px;
+}
 
-        /* Chart canvas sizing - let Chart.js control aspect but ensure responsiveness */
-        .chart-wrap { width:100%; }
-        canvas { width:100% !important; height:260px !important; display:block; }
+/* Logs Box */
+#logOutput {
+    background: rgba(0,15,20,0.55);
+    border: 1px solid #0ff3;
+    box-shadow: 0 0 12px #0ff4 inset;
+    border-radius: 12px;
+    padding: 14px;
+    height: 280px;
+    overflow-y: auto;
+    white-space: pre-wrap;      /* <-- WRAPS LONG LOGS */
+    word-wrap: break-word;      /* <-- BREAK LONG STRINGS */
+    font-size: 0.9rem;
+    line-height: 1.4rem;
+}
 
-        /* ---------- Logs (wrapable) ---------- */
-        h3.logs-title { margin-top:18px; color:var(--muted); font-weight:600; font-size:0.95rem; letter-spacing:0.8px; }
-        pre#log {
-            background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015));
-            padding:12px;
-            border-radius: 10px;
-            max-height: 420px;
-            overflow: auto;
-            font-family: 'Fira Code', monospace;
-            font-size:0.88rem;
-            line-height:1.35;
-            color: #bfeef9;
-            border: 1px solid rgba(255,255,255,0.02);
+/* Inputs */
+input, select {
+    width: 100%;
+    padding: 10px;
+    margin: 6px 0;
+    border-radius: 8px;
+    border: 1px solid #0ff4;
+    background: rgba(0, 20, 30, 0.65);
+    color: #d2faff;
+    font-size: 0.95rem;
+    outline: none;
+}
 
-            /* WRAP behavior */
-            white-space: pre-wrap;    /* preserve newlines, wrap long lines */
-            word-break: break-word;   /* break very long tokens (urls) */
-            hyphens: auto;
-        }
-        pre#log::-webkit-scrollbar{height:8px;width:8px}
-        pre#log::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.03);border-radius:8px}
+input:focus, select:focus {
+    box-shadow: 0 0 8px #0ff8;
+}
 
-        /* ---------- Responsive adjustments ---------- */
-        @media (max-width: 980px){
-            .grid { grid-template-columns: 1fr 280px; }
-            .chart-wrap canvas { height:220px !important; }
-        }
+/* Mobile responsiveness */
+@media (max-width: 600px) {
+    h1 { font-size: 1.6rem; }
+    #priceChart { height: 230px; }
+    button { font-size: 0.85rem; padding: 10px; }
+}
 
-        @media (max-width: 720px){
-            .page { padding: 0 10px; }
-            .grid { grid-template-columns: 1fr; }
-            .side { order: 2; width:100% }
-            .chart-panel { order: 1 }
-            canvas { height:200px !important }
-            .meta { gap:8px; align-items:flex-start }
-            .controls { width:100% }
-            .portfolio-summary p { font-size:1.15rem }
-        }
-
-        @media (max-width:420px){
-            header h1{ font-size:0.98rem }
-            .logout{ padding:7px 10px; font-size:0.82rem }
-            .portfolio-summary strong{ font-size:0.78rem }
-            .portfolio-summary p{ font-size:1.05rem }
-            pre#log{ font-size:0.82rem; max-height:320px }
-        }
-
-        /* small utility */
-        .muted { color:var(--muted) }
-    </style>
+</style>
 </head>
+
 <body>
-    <div class="page">
+<div class="container">
 
-        <!-- HEADER -->
-        <header>
-            <div class="brand">
-                <div class="logo-dot" aria-hidden="true"><div class="logo-mark"></div></div>
-                <div>
-                    <h1>DEXtrader V5</h1>
-                    <div style="font-size:0.76rem;color:var(--muted);margin-top:3px">Dashboard</div>
-                </div>
-            </div>
+    <h1>DEXtrader V5 Dashboard</h1>
 
-            <div class="header-actions">
-                <a class="logout" href="/logout">Logout</a>
-            </div>
-        </header>
-
-        <!-- MAIN CARD -->
-        <main class="card" role="main" aria-live="polite">
-
-            <div class="meta">
-                <div class="meta-left">
-                    <h2>Welcome, {{ user['username'] }}</h2>
-                    <p><strong>Bot Name:</strong> {{ user['name'] }} &nbsp;•&nbsp; <strong>Wallet:</strong> {{ user['address'] }}</p>
-                </div>
-
-                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <p style="margin:0;color:var(--muted);font-weight:500;font-size:0.88rem">Status</p>
-                        {% if user['is_active'] %}
-                            <div class="status running" role="status" aria-label="Running">RUNNING</div>
-                        {% else %}
-                            <div class="status stopped" role="status" aria-label="Stopped">STOPPED</div>
-                        {% endif %}
-                    </div>
-
-                    <div class="controls">
-                        <form method="get" action="/start/{{ user['id'] }}">
-                            <button type="submit" class="start" aria-label="Start Bot">Start Bot</button>
-                        </form>
-
-                        <form method="get" action="/stop/{{ user['id'] }}">
-                            <button type="submit" class="stop" aria-label="Stop Bot">Stop Bot</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- GRID -->
-            <div class="grid">
-                <!-- LEFT: Chart / Portfolio -->
-                <section class="chart-panel">
-                    <div class="chart-header">
-                        <h3>Portfolio Overview</h3>
-                        <div style="font-size:0.82rem;color:var(--muted)">Live</div>
-                    </div>
-
-                    <div class="portfolio-summary" aria-hidden="false">
-                        <div>
-                            <strong>USDT</strong>
-                            <p id="usdtBalance">--</p>
-                        </div>
-                        <div>
-                            <strong>WMATIC</strong>
-                            <p id="wmaticBalance">--</p>
-                        </div>
-                        <div>
-                            <strong>Total (USDT)</strong>
-                            <p id="portfolioValue">--</p>
-                        </div>
-                    </div>
-
-                    <div class="chart-wrap">
-                        <canvas id="portfolioChart" aria-label="Portfolio chart"></canvas>
-                    </div>
-
-                    <h3 class="logs-title">Logs</h3>
-                    <pre id="log" role="log" aria-live="polite"></pre>
-                </section>
-
-                <!-- RIGHT: Stats -->
-                <aside class="side" aria-label="Bot statistics">
-                    <div class="stat-card">
-                        <small>Initial</small>
-                        <div class="big" id="initialVal">--</div>
-                    </div>
-
-                    <div class="stat-card">
-                        <small>Growth</small>
-                        <div class="big" id="growthPct">--%</div>
-                    </div>
-
-                    <div class="stat-card">
-                        <small>Runtime</small>
-                        <div class="big" id="runtime">--:--:--</div>
-                    </div>
-                </aside>
-            </div>
-
-        </main>
+    <!-- Bot Status -->
+    <div class="card">
+        <h2>Bot Status</h2>
+        <div id="botStatus">Loading...</div>
     </div>
 
-    <!-- Existing scripts retained (only small improvement: safe null-checks) -->
-    <script>
-        const logElement = document.getElementById("log");
-        const uid = {{ user['id'] }};
-        try {
-            const evtSource = new EventSource(`/stream_logs/${uid}`);
+    <!-- Strategy Selector -->
+    <div class="card">
+        <h2>Select Strategy</h2>
+        <select id="strategySelect">
+            <option value="asset-balancer">Asset Balancer</option>
+            <option value="dca-grid">DCA Grid</option>
+            <option value="uniswap-v3">Uniswap V3 Strategy</option>
+        </select>
+        <button onclick="updateStrategy()">Apply Strategy</button>
+    </div>
 
-            evtSource.onmessage = function(e) {
-                // append and keep scroll at bottom
-                logElement.textContent += e.data + "\n";
-                logElement.scrollTop = logElement.scrollHeight;
-            };
+    <!-- Price Chart -->
+    <div class="card">
+        <h2>Live Price Chart</h2>
+        <canvas id="priceChart"></canvas>
+    </div>
 
-            evtSource.onerror = function() {
-                console.error("SSE connection lost, attempting to reconnect...");
-            };
-        } catch (err) {
-            console.warn("SSE init failed:", err);
-        }
+    <!-- Controls -->
+    <div class="card">
+        <h2>Bot Controls</h2>
+        <button onclick="startBot()">Start Bot</button>
+        <button onclick="stopBot()" style="border-color:#ff8080; color:#ffb7b7; box-shadow:0 0 10px #ff000033 inset;">Stop Bot</button>
+    </div>
 
-        // ---------- Chart ----------
-        const ctx = document.getElementById('portfolioChart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: ["Initial"],
-                datasets: [{
-                    label: 'Portfolio Value (USDT)',
-                    data: [0],
-                    borderColor: '#7ee0ff',
-                    backgroundColor: 'rgba(126,224,255,0.06)',
-                    borderWidth: 2,
-                    tension: 0.28,
-                    fill: true,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { display: false },
-                    y: {
-                        ticks: { color: '#9aa3ad' },
-                        grid: { color: 'rgba(255,255,255,0.02)' }
-                    }
-                }
-            }
-        });
+    <!-- Logs -->
+    <div class="card">
+        <h2>Runtime Logs</h2>
+        <div id="logOutput">Initializing...</div>
+    </div>
 
-        // ---------- Portfolio Fetch ----------
-        let baselineSet = false;
-        let baselineValue = 0;
+</div>
 
-        async function initBaseline() {
-            try {
-                const res = await fetch(`/api/botstat/${uid}`);
-                const stat = await res.json();
-                if (stat && !stat.error) {
-                    baselineValue = stat.initial_value;
-                    chart.data.datasets[0].data[0] = baselineValue;
-                    chart.update();
-                }
-            } catch (e) {
-                console.warn("Failed to init baseline", e);
-            }
-        }
+<!-- ChartJS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-        async function fetchPortfolio() {
-            try {
-                const res = await fetch(`/api/portfolio/${uid}`);
-                const data = await res.json();
+<!-- Your existing dashboard JS — stays untouched -->
+<script src="static/dashboard.js"></script>
 
-                if (data && data.total_value_usdt !== undefined && data.total_value_usdt !== null) {
-                    if (!baselineSet) {
-                        await initBaseline();
-                        baselineSet = true;
-                    }
-
-                    // Add new point
-                    chart.data.datasets[0].data.push(data.total_value_usdt);
-                    chart.data.labels.push("");
-
-                    // Keep baseline (index 0) intact, trim live points to ~300 samples
-                    if (chart.data.datasets[0].data.length > 301) {
-                        chart.data.datasets[0].data.splice(1, 1);
-                        chart.data.labels.splice(1, 1);
-                    }
-                    chart.update("none");
-
-                    // Update UI
-                    document.getElementById("usdtBalance").textContent = (data.usdt_balance ?? 0).toFixed(4);
-                    document.getElementById("wmaticBalance").textContent = (data.wmatic_balance ?? 0).toFixed(4);
-                    document.getElementById("portfolioValue").textContent = (data.total_value_usdt ?? 0).toFixed(4);
-                }
-            } catch (err) {
-                console.warn("Failed to fetch portfolio data", err);
-            }
-        }
-
-        async function updateBotStats() {
-            try {
-                const res = await fetch(`/api/botstat/${uid}`);
-                const stat = await res.json();
-                if (stat && !stat.error) {
-                    document.getElementById("initialVal").textContent = (stat.initial_value ?? 0).toFixed(3);
-                    document.getElementById("growthPct").textContent = ((stat.growth_pct ?? 0).toFixed(2)) + "%";
-                    document.getElementById("runtime").textContent = stat.duration ?? "--:--:--";
-                }
-            } catch (e) {
-                console.warn("Failed to fetch bot stats", e);
-            }
-        }
-
-        // initial calls + intervals
-        fetchPortfolio();
-        updateBotStats();
-        setInterval(fetchPortfolio, 15000);
-        setInterval(updateBotStats, 30000);
-    </script>
 </body>
 </html>

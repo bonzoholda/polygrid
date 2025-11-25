@@ -143,7 +143,11 @@ def get_portfolio(request: Request):
 # -----Uniswap LP tracking----
 @app.get("/api/lpstat/{uid}")
 def get_lpstat(uid: int):
-    return get_lp_stat(uid)
+    stat = get_lp_stat(uid)   # from core.lp_helper
+    if stat is None:
+        return {"error": "LP state not available yet"}
+    return stat
+
 
 
 # ---------- Bot statistics (initial value + runtime + growth) ----------

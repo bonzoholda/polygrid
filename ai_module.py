@@ -148,13 +148,18 @@ class MLSignalGeneratorOKX:
         slope = latest["sma_slow_slope"]
         price = latest["price"]
         sma_slow = latest["sma_slow"]
-        vol = latest["volatility"]
+        vol_series = df["volatility"]
+        vol = vol_series.iloc[-1]  # current volatility
 
-        if slope > 0 and price > sma_slow and vol < vol.quantile(0.75) if hasattr(df["volatility"], 'quantile') else slope > 0:
+        # Compare current volatility to historical quantile
+        high_vol_threshold = vol_series.quantile(0.75)
+
+        if slope > 0 and price > sma_slow and vol < high_vol_threshold:
             return "up"
-        if slope < 0 and price < sma_slow:
+        elif slope < 0 and price < sma_slow and vol > high_vol_threshold:
             return "down"
-        return "sideways"
+        else:
+            return "sideways"
 
     # ============================================================
     # TRAIN (ensemble + calibration)

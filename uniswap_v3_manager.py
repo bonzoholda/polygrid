@@ -57,40 +57,47 @@ NFT_MANAGER_ABI = [
 ]
 
 class UniswapV3Manager:
-    def __init__(self, owner_address=None, owner_private_key=None, pool_address: str = None):
-        logging.info("DEBUG: Initializing UniswapV3Manager class...")
+    def __init__(self, owner_address=None, owner_private_key=None):
+        print("DEBUG: Initializing UniswapV3Manager class...")
 
-        self.owner = w3.to_checksum_address(owner_address) if owner_address else w3.to_checksum_address(config.OWNER)
+        if owner_address:
+            self.owner = w3.to_checksum_address(owner_address)
+        else:
+            self.owner = w3.to_checksum_address(config.OWNER)
+
         self.owner_private_key = owner_private_key if owner_private_key else config.PRIVATE_KEY
 
-        # Pool
-        self.pool_address = w3.to_checksum_address(pool_address) if pool_address else None
-        self.pool = w3.eth.contract(address=self.pool_address, abi=POOL_ABI) if self.pool_address else None
-        if not self.pool:
-            logging.warning("⚠️ No pool_address provided — LP valuation will fallback to OKX price.")
+        try:
+            self.nft_manager = w3.eth.contract(address=NFT_MANAGER_ADDR, abi=NFT_MANAGER_ABI)
+            self.token0_obj = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)
+            self.token1_obj = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)
 
-        # NFT Manager
-        self.nft_manager = w3.eth.contract(address=NFT_MANAGER_ADDR, abi=NFT_MANAGER_ABI)
+            if int(WMATIC_ADDR, 16) < int(USDT_ADDR, 16):
+                self.token0 = WMATIC_ADDR
+                self.token1 = USDT_ADDR
+                self.is_wmatic_zero = True
+            else:
+                self.token0 = USDT_ADDR
+                self.token1 = WMATIC_ADDR
+                self.is_wmatic_zero = False
 
-        # Token objects
-        self.token0_obj = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)
-        self.token1_obj = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)
+            try:
+                self.dec0 = int(self.token0_obj.functions.decimals().call())
+            except Exception:
+                self.dec0 = 18 if self.is_wmatic_zero else 6
 
-        # Determine token order
-        if int(WMATIC_ADDR, 16) < int(USDT_ADDR, 16):
-            self.token0, self.token1 = WMATIC_ADDR, USDT_ADDR
-            self.is_wmatic_zero = True
-        else:
-            self.token0, self.token1 = USDT_ADDR, WMATIC_ADDR
-            self.is_wmatic_zero = False
+            try:
+                self.dec1 = int(self.token1_obj.functions.decimals().call())
+            except Exception:
+                self.dec1 = 6 if self.is_wmatic_zero else 18
 
-        # Decimals
-        self.dec0 = int(self.token0_obj.functions.decimals().call()) if self.token0_obj else 18
-        self.dec1 = int(self.token1_obj.functions.decimals().call()) if self.token1_obj else 6
+        except Exception as e:
+            print(f"CRITICAL ERROR in V3 __init__: {e}")
+            raise e
 
-    # --- Patch utils helpers with this user's creds ---
     def _with_user_creds(self, func, *args, **kwargs):
-        orig_owner, orig_priv = getattr(config, "OWNER", None), getattr(config, "PRIVATE_KEY", None)
+        orig_owner = getattr(config, "OWNER", None)
+        orig_priv = getattr(config, "PRIVATE_KEY", None)
         try:
             config.OWNER = self.owner
             config.PRIVATE_KEY = self.owner_private_key
@@ -98,154 +105,232 @@ class UniswapV3Manager:
         finally:
             if orig_owner is not None:
                 config.OWNER = orig_owner
+            else:
+                try: delattr(config, "OWNER")
+                except Exception: pass
             if orig_priv is not None:
                 config.PRIVATE_KEY = orig_priv
+            else:
+                try: delattr(config, "PRIVATE_KEY")
+                except Exception: pass
 
-    # --- Pool helpers ---
-    def get_pool_slot0(self):
-        if not self.pool:
-            return None, None
+    def _send_tx_local(self, tx_dict):
         try:
-            slot0 = self.pool.functions.slot0().call()
-            return int(slot0[0]), int(slot0[1])
+            if "nonce" not in tx_dict:
+                tx_dict["nonce"] = w3.eth.get_transaction_count(self.owner, "pending")
+            if "gasPrice" not in tx_dict:
+                tx_dict["gasPrice"] = w3.eth.gas_price
+            signed = w3.eth.account.sign_transaction(tx_dict, private_key=self.owner_private_key)
+            raw = getattr(signed, "raw_transaction", None) or getattr(signed, "rawTransaction", None)
+            if raw is None:
+                logging.error("❌ Local sign failed: missing raw tx")
+                return None
+            tx_hash = w3.eth.send_raw_transaction(raw)
+            logging.info(f"✅ Local TX sent: {tx_hash.hex()} (waiting for receipt)")
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
+            if receipt and getattr(receipt, "status", None) == 1:
+                logging.info(f"🧾 Local TX confirmed in block {receipt.blockNumber}")
+                return tx_hash.hex()
+            logging.error(f"❌ Local TX reverted or failed (status={getattr(receipt,'status',None)})")
+            return None
         except Exception as e:
-            logging.warning(f"⚠️ Failed to read slot0: {e}")
-            return None, None
-
-    def get_pool_price_and_tick(self):
-        sqrtPriceX96, tick = self.get_pool_slot0()
-        if sqrtPriceX96 is None:
-            return None, None
-        try:
-            sqrtPrice = float(sqrtPriceX96) / (2 ** 96)
-            price_raw = sqrtPrice * sqrtPrice
-            price_human = price_raw * (10 ** (self.dec0 - self.dec1))
-            return price_human, tick
-        except Exception as e:
-            logging.error(f"Error converting sqrtPriceX96: {e}")
-            return None, tick
+            logging.exception(f"❌ _send_tx_local error: {e}")
+            return None
 
     def get_tick_from_price(self, price_float):
-        if price_float is None or price_float <= 0:
+        try:
+            if price_float is None or price_float == 0:
+                return 0
+            exp = (self.dec1 - self.dec0)
+            raw_price = float(price_float) * (10 ** exp)
+            if raw_price <= 0:
+                return 0
+            tick = math.log(raw_price) / math.log(1.0001)
+            return int(round(tick))
+        except Exception as e:
+            logging.error(f"Error in get_tick_from_price: {e}")
             return 0
-        exp = (self.dec1 - self.dec0)
-        raw_price = price_float * (10 ** exp)
-        tick = math.log(raw_price) / math.log(1.0001)
-        return int(round(tick))
 
     def align_tick(self, tick):
-        return int(math.floor(tick / TICK_SPACING) * TICK_SPACING)
+        try:
+            return int(math.floor(tick / TICK_SPACING) * TICK_SPACING)
+        except Exception:
+            return (tick // TICK_SPACING) * TICK_SPACING
 
-    # --- Auto-Balancer ---
     def balance_wallet_50_50(self, current_price_usdt):
+        logging.info("⚖️ Checking wallet balance for 50:50 split...")
         try:
             bal_usdt = get_onchain_token_balance(usdt, self.owner)
             bal_wmatic = get_onchain_token_balance(wmatic, self.owner)
-            val_usdt = float(bal_usdt)
-            val_wmatic = float(bal_wmatic) * float(current_price_usdt)
-            total_val = val_usdt + val_wmatic
-            if total_val < 5.0:
-                return
-
-            usdt_ratio = val_usdt / total_val
-            if usdt_ratio > 0.60:
-                surplus_usdt = val_usdt - (total_val * 0.5)
-                self._with_user_creds(swap_usdt_to_wmatic, surplus_usdt)
-            elif usdt_ratio < 0.40:
-                surplus_wmatic_val = val_wmatic - (total_val * 0.5)
-                self._with_user_creds(swap_wmatic_to_usdt, surplus_wmatic_val / current_price_usdt)
         except Exception as e:
-            logging.error(f"Balance 50:50 error: {e}")
+            logging.error(f"Error reading balances for 50:50: {e}")
+            return
 
-    # --- Mint position ---
+        val_usdt = float(bal_usdt)
+        val_wmatic = float(bal_wmatic) * float(current_price_usdt)
+        total_val = val_usdt + val_wmatic
+        if total_val < 5.0:
+            logging.warning("⚠️ Wallet balance too low (< $5) to balance.")
+            return
+
+        try:
+            usdt_ratio = val_usdt / total_val
+        except Exception:
+            usdt_ratio = 1.0
+        logging.info(f"⚖️ Ratio: USDT {usdt_ratio*100:.1f}% | WMATIC {(1-usdt_ratio)*100:.1f}%")
+
+        if usdt_ratio > 0.60:
+            surplus_usdt = val_usdt - (total_val * 0.5)
+            logging.info(f"⚖️ Rebalancing: Swapping {surplus_usdt:.2f} USDT -> WMATIC")
+            try: self._with_user_creds(swap_usdt_to_wmatic, surplus_usdt)
+            except Exception as e: logging.error(f"swap_usdt_to_wmatic failed: {e}")
+            time.sleep(5)
+        elif usdt_ratio < 0.40:
+            surplus_wmatic_val = val_wmatic - (total_val * 0.5)
+            swap_amt = surplus_wmatic_val / current_price_usdt
+            logging.info(f"⚖️ Rebalancing: Swapping {swap_amt:.2f} WMATIC -> USDT")
+            try: self._with_user_creds(swap_wmatic_to_usdt, swap_amt)
+            except Exception as e: logging.error(f"swap_wmatic_to_usdt failed: {e}")
+            time.sleep(5)
+        else:
+            logging.info("✅ Balance is healthy (near 50:50). No swap needed.")
+
     def mint_position(self, center_price, range_pct=0.05, usdt_alloc=5.0):
-        tick_lower = self.align_tick(self.get_tick_from_price(center_price * (1 - range_pct)))
-        tick_upper = self.align_tick(self.get_tick_from_price(center_price * (1 + range_pct)))
+        logging.info(f"🦄 Calculating V3 Mint params. Center: {center_price}, Range: {range_pct*100}%")
+        lower_price = center_price * (1 - range_pct)
+        upper_price = center_price * (1 + range_pct)
+        tick_lower = self.align_tick(self.get_tick_from_price(lower_price))
+        tick_upper = self.align_tick(self.get_tick_from_price(upper_price))
         if tick_lower > tick_upper:
             tick_lower, tick_upper = tick_upper, tick_lower
 
-        dec_wmatic, dec_usdt = (self.dec0, self.dec1) if self.is_wmatic_zero else (self.dec1, self.dec0)
-        usdt_wei_target = int(usdt_alloc * (10 ** dec_usdt))
-        wmatic_wei_target = int((usdt_alloc / max(center_price, 1e-12)) * (10 ** dec_wmatic))
+        if self.is_wmatic_zero:
+            dec_wmatic, dec_usdt = self.dec0, self.dec1
+        else:
+            dec_wmatic, dec_usdt = self.dec1, self.dec0
 
-        bal_t0 = int(self.token0_obj.functions.balanceOf(self.owner).call())
-        bal_t1 = int(self.token1_obj.functions.balanceOf(self.owner).call())
+        usdt_wei_target = int(usdt_alloc * (10 ** dec_usdt))
+        try:
+            wmatic_wei_target = int((usdt_alloc / max(center_price, 1e-12)) * (10 ** dec_wmatic))
+        except Exception:
+            wmatic_wei_target = 0
+
+        try:
+            bal_t0 = int(self.token0_obj.functions.balanceOf(self.owner).call())
+            bal_t1 = int(self.token1_obj.functions.balanceOf(self.owner).call())
+        except Exception as e:
+            logging.error(f"❌ Failed to read on-chain balances: {e}")
+            return None
 
         target0, target1 = (wmatic_wei_target, usdt_wei_target) if self.is_wmatic_zero else (usdt_wei_target, wmatic_wei_target)
         amount0_final = min(target0, int(bal_t0 * 0.999))
         amount1_final = min(target1, int(bal_t1 * 0.999))
+
         if amount0_final == 0 and amount1_final == 0:
+            logging.error("❌ MINT FAILED: Cannot execute mint due to zero balance in both tokens.")
             return None
 
-        if amount0_final > 0:
-            if not self._with_user_creds(approve_if_needed, self.token0_obj, NFT_MANAGER_ADDR, amount0_final):
-                return None
-        if amount1_final > 0:
-            if not self._with_user_creds(approve_if_needed, self.token1_obj, NFT_MANAGER_ADDR, amount1_final):
-                return None
+        logging.info(f"DEBUG: Approving {amount0_final} (T0) and {amount1_final} (T1) for mint...")
+        try:
+            if amount0_final > 0 and not self._with_user_creds(approve_if_needed, self.token0_obj, NFT_MANAGER_ADDR, amount0_final):
+                logging.error("Approval failed for Token0"); return None
+            if amount1_final > 0 and not self._with_user_creds(approve_if_needed, self.token1_obj, NFT_MANAGER_ADDR, amount1_final):
+                logging.error("Approval failed for Token1"); return None
+        except Exception as e:
+            logging.error(f"Approval exception: {e}"); return None
 
-        deadline = int(time.time()) + 300
         params = {
-            'token0': self.token0,
-            'token1': self.token1,
-            'fee': POOL_FEE,
-            'tickLower': tick_lower,
-            'tickUpper': tick_upper,
-            'amount0Desired': amount0_final,
-            'amount1Desired': amount1_final,
-            'amount0Min': 0,
-            'amount1Min': 0,
-            'recipient': self.owner,
-            'deadline': deadline
+            'token0': self.token0, 'token1': self.token1, 'fee': POOL_FEE,
+            'tickLower': tick_lower, 'tickUpper': tick_upper,
+            'amount0Desired': amount0_final, 'amount1Desired': amount1_final,
+            'amount0Min': 0, 'amount1Min': 0,
+            'recipient': self.owner, 'deadline': int(time.time()) + 300
         }
 
-        tx_build = self.nft_manager.functions.mint(params).build_transaction({
-            'from': self.owner,
-            'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
-            'gas': 900000,
-            'gasPrice': w3.eth.gas_price
-        })
-        return self._with_user_creds(send_tx, tx_build)
+        try:
+            tx_build = self.nft_manager.functions.mint(params).build_transaction({
+                'from': self.owner, 'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
+                'gas': 900000, 'gasPrice': w3.eth.gas_price
+            })
+            return self._with_user_creds(send_tx, tx_build)
+        except Exception as e:
+            logging.error(f"Mint build failed: {e}"); return None
 
-    # --- Get active position ID ---
+    # --- Active LP & Close ---
+    def check_position_status(self, token_id, current_price):
+        try:
+            pos = self.nft_manager.functions.positions(token_id).call()
+            tick_lower, tick_upper, liquidity = pos[5], pos[6], pos[7]
+            current_tick = self.get_tick_from_price(current_price)
+            logging.info(f"🔍 Position Status: Tick {current_tick} vs Range [{tick_lower} - {tick_upper}]")
+            if current_tick < tick_lower or current_tick > tick_upper:
+                logging.warning(f"🚨 Price Out of Range! Closing Position {token_id}...")
+                self.close_position(token_id)
+                return False
+            if liquidity == 0:
+                logging.warning("⚠️ Position has 0 liquidity (already closed?).")
+                return False
+            return True
+        except Exception as e:
+            logging.error(f"Error checking position status: {e}")
+            return True
+
+    def close_position(self, token_id):
+        logging.info(f"🔥 Closing Position NFT ID: {token_id}")
+        try:
+            pos = self.nft_manager.functions.positions(token_id).call()
+            liquidity = pos[7]
+        except Exception as e:
+            logging.error(f"Failed reading position for close: {e}"); return
+
+        if liquidity > 0:
+            try:
+                params_dec = {'tokenId': token_id, 'liquidity': liquidity, 'amount0Min': 0, 'amount1Min': 0, 'deadline': int(time.time())+300}
+                tx = self.nft_manager.functions.decreaseLiquidity(params_dec).build_transaction({
+                    'from': self.owner, 'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
+                    'gas': 700000, 'gasPrice': w3.eth.gas_price
+                })
+                self._with_user_creds(send_tx, tx)
+                time.sleep(2)
+            except Exception as e:
+                logging.error(f"Error decreasing liquidity: {e}")
+
+        try:
+            params_col = {'tokenId': token_id, 'recipient': self.owner, 'amount0Max': 2**128-1, 'amount1Max': 2**128-1}
+            tx2 = self.nft_manager.functions.collect(params_col).build_transaction({
+                'from': self.owner, 'nonce': w3.eth.get_transaction_count(self.owner, 'pending'),
+                'gas': 200000, 'gasPrice': w3.eth.gas_price
+            })
+            self._with_user_creds(send_tx, tx2)
+            logging.info("✅ Position Closed and Funds Collected.")
+        except Exception as e:
+            logging.error(f"Error collecting funds from position {token_id}: {e}")
+
     def get_active_position_id(self):
-        balance = self.nft_manager.functions.balanceOf(self.owner).call()
-        if balance == 0:
+        try:
+            balance = self.nft_manager.functions.balanceOf(self.owner).call()
+            if balance == 0:
+                return None
+            logging.info(f"NFT Manager reports {balance} active positions.")
+            return self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, 0).call()
+        except Exception as e:
+            logging.warning(f"Failed to retrieve active position ID: {e}")
             return None
-        return self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, 0).call()
 
-    # --- Position value ---
     def get_position_asset_value(self, token_id, current_price):
-        pos = self.nft_manager.functions.positions(token_id).call()
-        tick_lower, tick_upper, liquidity = pos[5], pos[6], pos[7]
-        if liquidity == 0:
-            return 0.0, 0.0, 0.0
+        try:
+            pos = self.nft_manager.functions.positions(token_id).call()
+            tick_lower, tick_upper, liquidity = pos[5], pos[6], pos[7]
+            if liquidity == 0: return 0, 0, 0
 
-        current_tick = self.get_tick_from_price(current_price)
-        L = float(liquidity)
-        sqrt_price = 1.0001 ** (current_tick / 2.0)
-        sqrt_price_lower = 1.0001 ** (tick_lower / 2.0)
-        sqrt_price_upper = 1.0001 ** (tick_upper / 2.0)
-
-        if current_tick <= tick_lower:
-            amount0_wei = L * ((sqrt_price_upper - sqrt_price_lower) / (sqrt_price_lower * sqrt_price_upper))
-            amount1_wei = 0.0
-        elif current_tick >= tick_upper:
-            amount0_wei = 0.0
-            amount1_wei = L * (sqrt_price_upper - sqrt_price_lower)
-        else:
-            amount0_wei = L * ((sqrt_price_upper - sqrt_price) / (sqrt_price * sqrt_price_upper))
-            amount1_wei = L * (sqrt_price - sqrt_price_lower)
-
-        if self.is_wmatic_zero:
-            amount_wmatic = amount0_wei / (10 ** self.dec0)
-            amount_usdt = amount1_wei / (10 ** self.dec1)
-        else:
-            amount_usdt = amount0_wei / (10 ** self.dec0)
-            amount_wmatic = amount1_wei / (10 ** self.dec1)
-
-        total_usdt_value = amount_usdt + (amount_wmatic * current_price)
-        return amount_usdt, amount_wmatic, total_usdt_value
+            # simplified: assume 50:50
+            bal_usdt = get_onchain_token_balance(usdt, self.owner)
+            bal_wmatic = get_onchain_token_balance(wmatic, self.owner)
+            total_val = bal_usdt + bal_wmatic * current_price
+            return bal_usdt, bal_wmatic, total_val
+        except Exception as e:
+            logging.error(f"Failed computing asset value: {e}")
+            return 0, 0, 0
 
 # -----------------------------
 # Runner Loop (thread-safe, updates core.state)

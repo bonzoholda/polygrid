@@ -141,7 +141,7 @@ def get_portfolio(request: Request):
         return {"error": str(e)}
 
 # -----Uniswap LP tracking----
-@app.post("/api/lpstat/{uid}")
+@app.get("/api/lpstat/{uid}")
 def lpstat(uid: int, stat: dict):
     """
     LP stat API route simply calls helper function

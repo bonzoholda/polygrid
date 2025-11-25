@@ -472,7 +472,7 @@ class UniswapV3Manager:
 
 
 # --- Runner (keeps names & logs) ---
-def run_uniswap_v3_loop(uid=int, poll_interval=60):
+def run_uniswap_v3_loop(uid, poll_interval=60):
     print("DEBUG: Thread started for Uniswap V3 Strategy...")
     logging.info("🦄 Uniswap V3 Strategy Started.")
 

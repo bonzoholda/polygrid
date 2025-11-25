@@ -518,6 +518,7 @@ import logging
 import time
 from uniswap_v3_manager import UniswapV3Manager
 from core.state import update_lp_state, get_lp_state
+from dashboard.app import lpstat  # <-- FastAPI route handler
 import asyncio
 
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):

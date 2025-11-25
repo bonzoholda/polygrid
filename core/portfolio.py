@@ -1,131 +1,82 @@
-# core/portfolio.py
 import logging
 import sys
 import os
+import traceback
 
-# Ensure root path included
+# 1. Fix Import Path (Ensure we can see the manager in root)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
-from utils import w3
-from config import usdt, wmatic, UNISWAP_POOL_ADDR
-from uniswap_v3_manager import UniswapV3Manager
-from core.state import get_lp_state
-
-manager = UniswapV3Manager(UNISWAP_POOL_ADDR)
-BOT_UID = int(os.getenv("BOT_UID", "0"))
-
-def _normalize_price(price):
-    try:
-        if price is None:
-            return 0.0
-        return round(float(price), 6)
-    except Exception:
-        return 0.0
+from config import router, usdt, wmatic 
+# Note: We don't even need to import OWNER anymore!
 
 def fetch_portfolio(uid: int):
     from dashboard.manager import get_user
-
-    # Safe defaults
-    lp_assets_usdt = 0.0
-    lp_assets_wmatic = 0.0
-    lp_value_usdt = 0.0
-    wmatic_price = 0.0
-    has_lp = False
-
+    
     try:
+        # --- 1. Fetch User & Wallet Data ---
         user = get_user(uid)
         if not user:
             return {"error": f"User {uid} not found"}
 
+        # This is the address we want to check (e.g. 0x5cd...)
         owner_address = user["address"]
-        owner_id = user["id"]
-        # ensure checksum
+
+        # Fetch Wallet Balances
+        usdt_balance = usdt.functions.balanceOf(owner_address).call() / 1e6
+        wmatic_balance = wmatic.functions.balanceOf(owner_address).call() / 1e18
+
+        # Get Price
+        price_path = [wmatic.address, usdt.address]
+        amounts = router.functions.getAmountsOut(int(1e18), price_path).call()
+        wmatic_price = amounts[-1] / 1e6
+
+        # --- 2. LP Logic (Direct Check) ---
+        lp_usdt_value = 0.0
+        lp_assets_usdt = 0.0
+        lp_assets_wmatic = 0.0
+        has_lp = False
+        
         try:
-            owner_address = w3.to_checksum_address(owner_address)
-        except Exception:
-            pass
-
-        # -------------------------------
-        # Wallet balances
-        # -------------------------------
-        try:
-            usdt_balance_raw = usdt.functions.balanceOf(owner_address).call()
-            wmatic_balance_raw = wmatic.functions.balanceOf(owner_address).call()
-            usdt_balance = float(usdt_balance_raw) / 1e6
-            wmatic_balance = float(wmatic_balance_raw) / 1e18
-        except Exception as e:
-            logging.error(f"❌ Failed to read on-chain balances: {e}")
-            return {"error": "Failed to read on-chain balances"}
-
-        # -------------------------------
-        # LP state
-        # -------------------------------
-        lp_state = get_lp_state(uid)
-        logging.info(f"Extracting LP state for uid {uid}: {lp_state}")
-
-        if lp_state:
-            # Use stored state
-            wmatic_price = _normalize_price(lp_state.get("wmatic_price", 0.0))
-            lp_assets_usdt = float(lp_state.get("lp_usdt", 0.0))
-            lp_assets_wmatic = float(lp_state.get("lp_wmatic", 0.0))
-            lp_value_usdt = float(lp_state.get("lp_total_value", 0.0))
-            has_lp = bool(lp_state.get("active", False))
-            logging.info(f"Using stored LP state: price={wmatic_price}, total={lp_value_usdt}")
-        else:
-            # Fallback: fetch directly from UniswapV3Manager
-            active_id = manager.get_active_position_id()
+            # Import Manager
+            from uniswap_v3_manager import UniswapV3Manager
+            
+            # 🔥 DIRECT BYPASS: Initialize Manager with the specific user address
+            # This forces the manager to look at THIS user's wallet, regardless of config.
+            v3_mgr = UniswapV3Manager(owner_address = owner_address)
+            
+            # Scan for positions
+            active_id = v3_mgr.get_active_position_id()
+            
             if active_id:
-                try:
-                    # Get normalized WMATIC price in USDT
-                    wmatic_price = _normalize_price(manager.get_pool_price_in_usdt())
+                u_amt, m_amt, total_val = v3_mgr.get_position_asset_value(active_id, wmatic_price)
+                lp_assets_usdt = u_amt
+                lp_assets_wmatic = m_amt
+                lp_usdt_value = total_val
+                has_lp = True
+                logging.info(f"🦄 User {uid} LP Found: ${total_val:.2f}")
+            else:
+                # It's normal for a user to have no LP, just log info
+                logging.info(f"User {uid} has no active V3 positions.")
 
-                    # Get position liquidity (raw token amounts)
-                    token0_raw, token1_raw = manager.get_position_liquidity(active_id)
-                    # Normalize token decimals
-                    usdt_amt = float(token0_raw) / 1e6   # USDT
-                    wmatic_amt = float(token1_raw) / 1e18  # WMATIC
+        except Exception as e:
+            # Don't crash the whole portfolio if V3 check fails
+            logging.warning(f"⚠️ Failed to fetch LP for user {uid}: {e}")
 
-                    # Total LP value in USDT
-                    lp_assets_usdt = usdt_amt
-                    lp_assets_wmatic = wmatic_amt
-                    lp_value_usdt = lp_assets_usdt + lp_assets_wmatic * wmatic_price
-                    has_lp = True
-
-                    # Optionally update core state
-                    state_data = {
-                        "wmatic_price": wmatic_price,
-                        "lp_usdt": lp_assets_usdt,
-                        "lp_wmatic": lp_assets_wmatic,
-                        "lp_total_value": lp_value_usdt,
-                        "active": True
-                    }
-                    logging.info(f"Updating core state: {state_data}")
-                    # update_lp_state(uid, state_data)  # uncomment to persist
-                except Exception as e:
-                    logging.error(f"❌ Failed to fetch on-chain LP: {e}")
-                    wmatic_price = 0.0
-                    lp_assets_usdt = 0.0
-                    lp_assets_wmatic = 0.0
-                    lp_value_usdt = 0.0
-                    has_lp = False
-
-        # -------------------------------
-        # Total portfolio
-        # -------------------------------
+        # --- 3. Final Totals ---
         wallet_value = usdt_balance + (wmatic_balance * wmatic_price)
-        total_value = wallet_value + lp_value_usdt
+        total_value = wallet_value + lp_usdt_value
 
         return {
             "uid": uid,
             "owner": owner_address,
             "usdt_balance": usdt_balance,
             "wmatic_balance": wmatic_balance,
-            "wmatic_price": wmatic_price,
+            "wmatic_price": wmatic_price,            
             "wallet_value_usdt": wallet_value,
-            "lp_value_usdt": lp_value_usdt,
+            "lp_value_usdt": lp_usdt_value,
             "lp_details": {
                 "active": has_lp,
                 "usdt": lp_assets_usdt,
@@ -135,5 +86,5 @@ def fetch_portfolio(uid: int):
         }
 
     except Exception as e:
-        logging.error(f"❌ Portfolio error: {e}")
+        logging.error(f"❌ Portfolio Error: {e}")
         return {"error": str(e)}

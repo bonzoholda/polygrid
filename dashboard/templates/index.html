@@ -267,13 +267,15 @@
             {% endif %}
         </p>
 
-        <form method="get" action="/start/{{ user['id'] }}">
-            <button type="submit" class="start">Start Bot</button>
-        </form>
-        <form method="get" action="/stop/{{ user['id'] }}">
-            <button type="submit" class="stop">Stop Bot</button>
-        </form>
-
+        <div class="card-container">
+            <form method="get" action="/start/{{ user['id'] }}">
+                <button type="submit" class="start">Start Bot</button>
+            </form>
+            <form method="get" action="/stop/{{ user['id'] }}">
+                <button type="submit" class="stop">Stop Bot</button>
+            </form>
+        </div>
+            
         <div class="chart-container">
             <h3>Portfolio Overview</h3>
 

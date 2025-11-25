@@ -267,7 +267,7 @@
             {% endif %}
         </p>
 
-        <div class="card-container">
+        <div class="controls">
             <form method="get" action="/start/{{ user['id'] }}">
                 <button type="submit" class="start">Start Bot</button>
             </form>
@@ -275,7 +275,7 @@
                 <button type="submit" class="stop">Stop Bot</button>
             </form>
         </div>
-            
+    </div>       
         <div class="chart-container">
             <h3>Portfolio Overview</h3>
 
@@ -305,7 +305,7 @@
 
         <h3>Logs</h3>
         <pre id="log"></pre>
-    </div>
+    
 
 <script>
     const logElement = document.getElementById("log");

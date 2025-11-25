@@ -223,7 +223,7 @@ if __name__ == "__main__":
 
     # Choose strategy manually here (you can replace with UI control later)
     # Available: "grid_dca" or "asset_balancer"
-    selected_strategy = "uniswap_v3"
+    selected_strategy = "grid_dca"
 
     logging.info(f"🎯 Selected strategy: {selected_strategy}")
     try:

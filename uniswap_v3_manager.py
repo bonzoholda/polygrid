@@ -323,7 +323,7 @@ if __name__ == "__main__":
     logging.info("🚀 UniswapV3 bot initialized.")
     try:
         logging.info("⚙️ Starting UniswapV3 Strategy Loop...")
-        run_uniswap_v3_loop()  # 👈 this calls your actual rebalancing logic
+        run_uniswap_v3_loop(uid=BOT_UID)  # 👈 pass the UID here
     except KeyboardInterrupt:
         logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
     except Exception as e:

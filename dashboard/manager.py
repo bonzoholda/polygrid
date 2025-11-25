@@ -146,6 +146,8 @@ def start_bot(uid, strategy="grid_dca"):
         bot_path = os.path.join(project_root, "asset_balancer.py")
     elif strategy == "uniswap_v3":
         bot_path = os.path.join(project_root, "uniswap_v3_manager.py")
+    elif strategy == "long_short":
+        bot_path = os.path.join(project_root, "longshort.py")        
     else:
         bot_path = os.path.join(project_root, "main.py")
 

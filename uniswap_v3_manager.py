@@ -320,22 +320,33 @@ class UniswapV3Manager:
     # -----------------------
     def get_active_position_id(self):
         """
-        Returns the first active NFT position ID owned by this manager.
-        Returns None if no position is found.
+        Returns the NFT ID of the active LP position.
+        Checks all NFTs owned by the bot and selects one with non-zero liquidity.
         """
         try:
             balance = self.nft_manager.functions.balanceOf(self.owner).call()
             if balance == 0:
                 return None
-            # Simply return the first NFT ID
-            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, 0).call()
-            pos = self.nft_manager.functions.positions(token_id).call()
-            if pos[7] == 0:  # liquidity == 0
-                return None
-            return token_id
+    
+            for i in range(balance):
+                token_id = self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, i).call()
+                pos = self.nft_manager.functions.positions(token_id).call()
+                liquidity = pos[7]  # liquidity
+                token0_pos, token1_pos = pos[2], pos[3]
+    
+                # Only consider the LP matching our WMATIC-USDT pool
+                tokens_match = (
+                    (token0_pos.lower() == self.token0.lower() and token1_pos.lower() == self.token1.lower()) or
+                    (token0_pos.lower() == self.token1.lower() and token1_pos.lower() == self.token0.lower())
+                )
+    
+                if liquidity > 0 and tokens_match:
+                    return token_id
+            return None
         except Exception as e:
             logging.error(f"get_active_position_id error: {e}")
             return None
+
 
     
     # -----------------------

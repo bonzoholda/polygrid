@@ -105,67 +105,71 @@
 
         /* ---------- Buttons (dock-like glass) ---------- */
         .controls button {
-            padding: 10px 20px;
+            padding: 10px 24px;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 16px;
-            font-weight: bold;
+            font-weight: 400;
             cursor: pointer;
             color: #fff;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-            background-size: 200% 200%;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            background-size: 300% 300%;
             transition: all 0.3s ease-in-out;
+            border: 1px solid rgba(255,255,255,0.25);  /* glassy border */
         }
         
-        /* ========== BLUE METALLIC (Start) ========== */
+        /* ===== BLUE METALLIC GLASS (Start Bot) ===== */
         button.start {
             background: linear-gradient(
                 145deg,
-                #5dade2,
-                #2e86c1,
-                #1b4f72,
-                #85c1e9,
-                #2e86c1
+                rgba(93, 173, 226, 0.35),
+                rgba(46, 134, 193, 0.35),
+                rgba(27, 79, 114, 0.35),
+                rgba(133, 193, 233, 0.35),
+                rgba(46, 134, 193, 0.35)
             );
-            background-size: 300% 300%;
             box-shadow:
-                0 4px 8px rgba(0, 123, 255, 0.3),
-                inset 0 1px 2px rgba(255,255,255,0.4),
-                inset 0 -2px 4px rgba(0,0,0,0.3);
+                0 4px 14px rgba(0, 123, 255, 0.25),
+                inset 0 1px 2px rgba(255,255,255,0.35),
+                inset 0 -2px 4px rgba(0,0,0,0.25);
         }
         
         button.start:hover {
             background-position: 100% 0%;
             box-shadow:
-                0 4px 12px rgba(0, 123, 255, 0.5),
-                inset 0 1px 2px rgba(255,255,255,0.6),
-                inset 0 -2px 4px rgba(0,0,0,0.4);
+                0 4px 18px rgba(0, 123, 255, 0.45),
+                inset 0 1px 3px rgba(255,255,255,0.5),
+                inset 0 -3px 6px rgba(0,0,0,0.35);
+            opacity: 0.95;
         }
         
-        /* ========== RED METALLIC (Stop) ========== */
+        /* ===== RED METALLIC GLASS (Stop Bot) ===== */
         button.stop {
             background: linear-gradient(
                 145deg,
-                #ec7063,
-                #cb4335,
-                #7b241c,
-                #f1948a,
-                #cb4335
+                rgba(236, 112, 99, 0.35),
+                rgba(203, 67, 53, 0.35),
+                rgba(123, 36, 28, 0.35),
+                rgba(241, 148, 138, 0.35),
+                rgba(203, 67, 53, 0.35)
             );
-            background-size: 300% 300%;
             box-shadow:
-                0 4px 8px rgba(255, 0, 0, 0.3),
-                inset 0 1px 2px rgba(255,255,255,0.4),
-                inset 0 -2px 4px rgba(0,0,0,0.3);
+                0 4px 14px rgba(255, 0, 0, 0.25),
+                inset 0 1px 2px rgba(255,255,255,0.35),
+                inset 0 -2px 4px rgba(0,0,0,0.25);
         }
         
         button.stop:hover {
             background-position: 100% 0%;
             box-shadow:
-                0 4px 12px rgba(255, 0, 0, 0.5),
-                inset 0 1px 2px rgba(255,255,255,0.6),
-                inset 0 -2px 4px rgba(0,0,0,0.4);
+                0 4px 18px rgba(255, 0, 0, 0.45),
+                inset 0 1px 3px rgba(255,255,255,0.5),
+                inset 0 -3px 6px rgba(0,0,0,0.35);
+            opacity: 0.95;
         }
+
 
 
         .card-container {

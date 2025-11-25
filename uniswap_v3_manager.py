@@ -470,26 +470,19 @@ class UniswapV3Manager:
             logging.error(f"Error calculating position value for ID {token_id}: {e}")
             return 0.0, 0.0, 0.0
 
-# ---RUNNER----------
-def run_uniswap_v3_loop(uid=None, poll_interval=60):
-    """
-    Run the Uniswap V3 strategy loop for a specific user.
-    uid: optional identifier if you track multiple users
-    """
-    logging.info(f"🦄 Uniswap V3 Strategy Started for UID {uid}")
+
+# --- Runner (keeps names & logs) ---
+def run_uniswap_v3_loop(poll_interval=60):
+    print("DEBUG: Thread started for Uniswap V3 Strategy...")
+    logging.info("🦄 Uniswap V3 Strategy Started.")
 
     manager = None
 
     while True:
         try:
             if manager is None:
-                # per-user manager if uid is given
-                if uid:
-                    # map uid -> address/private_key if needed
-                    # for now fallback to global config
-                    manager = UniswapV3Manager()
-                else:
-                    manager = UniswapV3Manager()
+                # create manager using global creds by default; your start_bot should create per-user manager
+                manager = UniswapV3Manager()
 
             price = get_pol_price_from_okx()
             if not price:
@@ -497,16 +490,16 @@ def run_uniswap_v3_loop(uid=None, poll_interval=60):
                 continue
             logging.info(f"💰 Current WMATIC price: {price:.4f} USDT")
 
-            # --- Previous iteration logic: check active LP ---
             active_id = manager.get_active_position_id()
 
             if active_id:
-                # active LP exists → process
+
                 usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
+
                 logging.info("----------------------------------------------------------------")
                 logging.info(f"🦄 Active Position ID: {active_id}")
                 logging.info(f"💰 Position Assets: {usdt_amt:.2f} USDT | {wmatic_amt:.4f} WMATIC")
-                logging.info(f"💵 TOTAL LP VALUE (USD): ${total_value:.2f}")
+                logging.info(f"💵 **TOTAL LP VALUE (USD): ${total_value:.2f}**")
                 logging.info("----------------------------------------------------------------")
 
                 is_active = manager.check_position_status(active_id, price)
@@ -518,51 +511,36 @@ def run_uniswap_v3_loop(uid=None, poll_interval=60):
                     logging.info(f"🦄 Holding active position ID {active_id}. Price {price}")
 
             else:
-                # no LP → rebalance wallet and attempt mint
-                logging.info(f"🦄 No active LP for UID {uid}. Rebalancing wallet...")
+                logging.info(f"🦄 No active position. Preparing entry around {price}...")
                 manager.balance_wallet_50_50(price)
 
                 usdt_balance = get_onchain_token_balance(usdt, manager.owner)
-                if usdt_balance < 5:
-                    logging.warning(f"⚠️ Not enough USDT to mint position: {usdt_balance:.2f}")
-                    time.sleep(poll_interval)
-                    continue
-
                 alloc_size = min(usdt_balance * 0.9, 50.0)
-                logging.info(f"🦄 Attempting to mint new LP with {alloc_size:.2f} USDT around price {price}")
+
                 manager.mint_position(center_price=price, range_pct=0.10, usdt_alloc=alloc_size)
 
             time.sleep(poll_interval)
 
         except Exception as e:
-            logging.exception(f"❌ Critical loop error for UID {uid}: {e}")
+            print(f"CRITICAL THREAD ERROR: {e}")
+            traceback.print_exc()
             time.sleep(10)
-
 
 
 # ---------- Entry Point ----------
 if __name__ == "__main__":
     import logging
     import time
-    import os
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
-    BOT_UID = int(os.getenv("BOT_UID", "0"))
-
     logging.info("🚀 UniswapV3 bot initialized.")
     try:
         logging.info("⚙️ Starting UniswapV3 Strategy Loop...")
-
-        # ✅ Create the manager instance first
-        manager = UniswapV3Manager()  # optionally pass owner_address/private_key/pool_address
-
-        # Start the loop
-        manager.run_uniswap_v3_loop(uid=BOT_UID)
-
+        run_uniswap_v3_loop()  # 👈 this calls your actual rebalancing logic
     except KeyboardInterrupt:
         logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
     except Exception as e:

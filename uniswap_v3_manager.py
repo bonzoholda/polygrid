@@ -311,11 +311,14 @@ def start_uniswap_v3_runner(uid: int, poll_interval=60, pool_address: str = None
 if __name__ == "__main__":
     import logging
     import time
+    import os
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
+
+    BOT_UID = int(os.getenv("BOT_UID", "0"))
 
     logging.info("🚀 UniswapV3 bot initialized.")
     try:

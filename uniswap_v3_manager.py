@@ -18,13 +18,14 @@ from utils import (
 )
 
 import config
-from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
+from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR, UNISWAP_POOL_ADDR
 
 from core.state import update_lp_state, get_lp_state
 from core.lp_helper import push_lp_stat
 
 # --- Constants ---
 NFT_MANAGER_ADDR = "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
+POOL_ADDRESS = UNISWAP_POOL_ADDR
 POOL_FEE = 3000
 TICK_SPACING = 60
 

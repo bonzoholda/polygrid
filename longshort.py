@@ -291,7 +291,7 @@ def start_bot(strategy: str = "grid_dca"):
         logging.warning(f"⚠️ {active_strategy} is already running. Stop it first.")
         return
 
-    if strategy not in ["grid_dca", "asset_balancer"]:
+    if strategy not in ["grid_dca", "asset_balancer", "uniswap_v3", "long_short"]:
         logging.error(f"❌ Invalid strategy: {strategy}")
         return
 

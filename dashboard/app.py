@@ -143,7 +143,7 @@ def get_portfolio(request: Request):
 # -----Uniswap LP tracking----
 @app.get("/api/lpstat/{uid}")
 def get_lpstat(uid: int):
-    return get_lp_state(uid)
+    return get_lp_stat(uid)
 
 
 # ---------- Bot statistics (initial value + runtime + growth) ----------

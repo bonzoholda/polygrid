@@ -404,6 +404,8 @@
             try {
                 const res = await fetch(`/api/portfolio/${uid}`);
                 const data = await res.json();
+                const res2 = await fetch(`/api/lpstat/${uid}`);
+                const data2 = await res.json();
     
                 if (data.total_value_usdt) {
                     if (!baselineSet) {
@@ -424,12 +426,13 @@
     
                     document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(3);
                     document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(3);
-                    document.getElementById("wmaticPrice").textContent = data.wmatic_price.toFixed(3);
-                    document.getElementById("walletValue").textContent = data.wallet_value_usdt.toFixed(3);
-                    document.getElementById("usdtLP").textContent = data.lp_details.usdt.toFixed(3);
-                    document.getElementById("wmaticLP").textContent = data.lp_details.wmatic.toFixed(3);
-                    document.getElementById("LPvalue").textContent = data.lp_value_usdt.toFixed(3);
-                    document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(3);
+                    document.getElementById("wmaticPrice").textContent = data2.wmatic_price.toFixed(3);
+                    
+                    document.getElementById("walletValue").textContent = data.usdt_balance.toFixed(3) + (data.wmatic_balance.toFixed(3)* data2.wmatic_price.toFixed(3));
+                    document.getElementById("usdtLP").textContent = data2.lp_usdt.toFixed(3);
+                    document.getElementById("wmaticLP").textContent = data2.lp_wmatic.toFixed(3);
+                    document.getElementById("LPvalue").textContent = data2.lp_value_usdt.toFixed(3);
+                    document.getElementById("portfolioValue").textContent = data2.lp_value_usdt.toFixed(3) + ((data.usdt_balance.toFixed(3) + (data.wmatic_balance.toFixed(3)* data2.wmatic_price.toFixed(3))) ;
                 }
             } catch (err) {
                 console.warn("Failed to fetch portfolio data", err);

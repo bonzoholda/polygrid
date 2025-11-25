@@ -3,266 +3,323 @@
 <head>
     <meta charset="UTF-8">
     <title>DEXtrader-V5 Dashboard</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400&family=Fira+Code&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* ---------- Base Reset ---------- */
+        /* ------------------------------
+           Glassmorphism theme (macOS-like)
+           ------------------------------ */
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html,body { height: 100%; }
         body {
             font-family: 'Exo 2', sans-serif;
-            background: radial-gradient(circle at 25% 25%, #0b111b, #05070a 80%);
+            background:
+              radial-gradient(1200px 600px at 10% 10%, rgba(10,20,40,0.55), transparent 8%),
+              radial-gradient(1000px 500px at 90% 85%, rgba(6,18,40,0.5), transparent 10%),
+              linear-gradient(180deg,#0a0f16 0%, #05060a 100%);
             color: #e6edf3;
-            line-height: 1.6;
+            -webkit-font-smoothing:antialiased;
+            -moz-osx-font-smoothing:grayscale;
+            line-height: 1.55;
             min-height: 100vh;
             overflow-x: hidden;
+            padding: 22px;
         }
         a { text-decoration: none; color: inherit; }
+
+        /* subtle frosted backdrop overlay to mimic depth */
+        .page-wrap {
+            max-width: 980px;
+            margin: 0 auto;
+            display: block;
+            position: relative;
+        }
 
         /* ---------- Header ---------- */
         header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.2rem 2rem;
-            background: rgba(22, 27, 34, 0.9);
-            box-shadow: 0 0 20px rgba(0, 224, 255, 0.05);
-            backdrop-filter: blur(6px);
-            border-bottom: 1px solid rgba(0, 224, 255, 0.08);
-        }
-        header h1 {
-            font-size: 1.5rem;
-            font-weight: 300;
-            letter-spacing: 2px;
-            color: #00e0ff;
-            text-shadow: 0 0 6px rgba(0, 224, 255, 0.4);
-        }
-        header a {
-            padding: 0.5rem 1rem;
-            background: transparent;
-            border: 1px solid rgba(0, 224, 255, 0.4);
-            border-radius: 8px;
-            font-weight: 300;
-            color: #00e0ff;
-            letter-spacing: 1px;
-            transition: 0.3s;
-        }
-        header a:hover {
-            background: rgba(0, 224, 255, 0.1);
-            box-shadow: 0 0 6px rgba(0, 224, 255, 0.2);
+            padding: 14px 18px;
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.08));
+            border: 1px solid rgba(255,255,255,0.03);
+            backdrop-filter: blur(10px) saturate(130%);
+            box-shadow: 0 8px 30px rgba(2,6,16,0.7), inset 0 1px 0 rgba(255,255,255,0.02);
+            margin-bottom: 20px;
         }
 
-        /* ---------- Container ---------- */
-        .container {
-            max-width: 900px;
-            margin: 2.5rem auto;
-            padding: 2rem;
-            background: rgba(15, 18, 24, 0.85);
-            border-radius: 16px;
-            box-shadow: 0 0 25px rgba(0, 224, 255, 0.05);
-            border: 1px solid rgba(0, 224, 255, 0.08);
-        }
-        h2 {
+        /* tiny macOS traffic lights on left */
+        .mac-dots { display:flex; gap:8px; align-items:center; }
+        .dot { width:12px; height:12px; border-radius:50%; box-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+        .dot.red { background: linear-gradient(180deg,#ff6b6b,#ff3b3b); border:1px solid rgba(255,255,255,0.06); }
+        .dot.yellow { background: linear-gradient(180deg,#ffd36b,#ffb84a); border:1px solid rgba(255,255,255,0.04); }
+        .dot.green { background: linear-gradient(180deg,#61ff9f,#00c38a); border:1px solid rgba(255,255,255,0.03); }
+
+        header h1 {
             font-size: 1.3rem;
-            color: #00e0ff;
-            margin-bottom: 1.2rem;
-            font-weight: 300;
-            letter-spacing: 1px;
+            font-weight: 400;
+            letter-spacing: 1.6px;
+            color: #c8f7ff;
+            text-shadow: 0 6px 18px rgba(0, 200, 255, 0.04);
+            display:flex;
+            gap:12px;
+            align-items:center;
         }
-        p { margin-bottom: 0.8rem; color: #b3b8c2; font-weight: 300; }
-        strong { color: #8b949e; font-weight: 300; }
+        header .brand-sub { font-size:0.72rem; color: rgba(200,247,255,0.7); font-weight:300; letter-spacing:0.6px; }
+
+        header a {
+            padding: 8px 12px;
+            background: linear-gradient(180deg, rgba(0, 224, 255, 0.06), rgba(0, 224, 255, 0.02));
+            border-radius: 10px;
+            border: 1px solid rgba(0,224,255,0.12);
+            color: #a6f6ff;
+            font-weight: 400;
+            letter-spacing: 0.6px;
+            box-shadow: 0 6px 20px rgba(2,6,16,0.65);
+        }
+        header a:hover { transform: translateY(-2px); }
+
+        /* ---------- Main Container Card ---------- */
+        .container {
+            margin: 18px auto;
+            padding: 22px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.03);
+            box-shadow: 0 20px 50px rgba(2,6,16,0.7);
+            backdrop-filter: blur(18px) saturate(140%);
+        }
+
+        h2 {
+            font-size: 1.15rem;
+            color: #dff9ff;
+            margin-bottom: 8px;
+            font-weight: 400;
+            letter-spacing: 0.8px;
+        }
+        p { margin-bottom: 0.6rem; color: #c4d1da; font-weight: 300; }
+        strong { color: #9aa8b2; font-weight: 400; }
 
         /* ---------- Status ---------- */
         .status {
-            font-weight: 300;
-            padding: 0.25rem 0.7rem;
-            border-radius: 8px;
-            color: #fff;
-            font-size: 0.85rem;
-            letter-spacing: 1px;
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            font-weight:500;
+            padding: 0.22rem 0.65rem;
+            border-radius: 999px;
+            color: #05292a;
+            font-size: 0.82rem;
+            letter-spacing: 0.6px;
         }
-        .status.running { background: #00c38a; }
-        .status.stopped { background: #b54a4a; }
+        .status.running { background: linear-gradient(180deg,#bff9ee,#87f0de); box-shadow: 0 6px 18px rgba(0,200,255,0.04); }
+        .status.stopped { background: linear-gradient(180deg,#ffd6d6,#ffb2b2); color:#3b0b0b; }
 
-        /* ---------- Buttons ---------- */
-        form { display: inline-block; margin-right: 0.5rem; }
+        /* ---------- Buttons (dock-like glass) ---------- */
+        .controls { margin: 10px 0 6px; display:flex; gap:10px; flex-wrap:wrap; }
+        form { display:inline-block; margin:0; }
         button {
-            padding: 0.5rem 1.2rem;
-            border: 1px solid rgba(0, 224, 255, 0.3);
-            border-radius: 10px;
-            font-family: 'Exo 2';
-            font-weight: 300;
-            color: #00e0ff;
-            background: transparent;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.04);
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+            color: #bff7ff;
             cursor: pointer;
-            letter-spacing: 1px;
-            box-shadow: 0 0 8px rgba(0, 224, 255, 0.05);
-            transition: all 0.3s ease;
+            letter-spacing: 0.6px;
+            font-weight:500;
+            box-shadow: 0 8px 26px rgba(2,6,16,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+            transition: transform .14s ease, box-shadow .14s ease;
         }
-        button.start:hover {
-            background: rgba(0, 224, 255, 0.1);
-            box-shadow: 0 0 8px rgba(0, 224, 255, 0.3);
-        }
-        button.stop {
-            border-color: rgba(255, 80, 80, 0.3);
-            color: #ff7070;
-        }
-        button.stop:hover {
-            background: rgba(255, 80, 80, 0.08);
-            box-shadow: 0 0 8px rgba(255, 80, 80, 0.25);
-        }
+        button.start:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(0,200,255,0.06); }
+        button.stop { color:#ffb7b7; border-color: rgba(255,120,120,0.08); background: linear-gradient(180deg, rgba(120,20,20,0.03), rgba(0,0,0,0.06)); }
+        button.stop:hover { transform: translateY(-3px); }
 
         /* ---------- Chart ---------- */
         .chart-container {
-            margin-top: 2rem;
-            background: rgba(9, 12, 18, 0.8);
+            margin-top: 14px;
+            padding: 16px;
             border-radius: 14px;
-            padding: 1.2rem;
-            box-shadow: inset 0 0 12px rgba(0, 224, 255, 0.05);
+            background: linear-gradient(180deg, rgba(12,16,22,0.6), rgba(8,10,14,0.55));
+            border: 1px solid rgba(255,255,255,0.02);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+            backdrop-filter: blur(12px) saturate(120%);
         }
-        canvas {
-            width: 100% !important;
-            height: 280px !important;
-        }
+        canvas { width: 100% !important; height: 300px !important; display:block; }
+
+        /* subtle header inside chart */
+        .chart-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+        .chart-header .title { color:#c2f6ff; font-weight:600; letter-spacing:0.6px; font-size:0.95rem; }
+        .chart-header .muted { color: #98b1bb; font-weight:400; font-size:0.86rem; }
 
         /* ---------- Portfolio Numbers ---------- */
         .portfolio-summary {
-            display: flex;
-            justify-content: space-around;
-            margin-bottom: 1.2rem;
-            text-align: center;
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            margin-bottom:12px;
+            text-align:center;
+            flex-wrap:wrap;
         }
-        .portfolio-summary strong {
-            color: #00e0ff;
-            font-weight: 300;
-            display: block;
-            margin-bottom: 0.3rem;
-        }
-        .portfolio-summary p {
-            font-family: 'Exo 2', sans-serif;
-            font-size: 2.5rem;
-            color: #e6edf3;
-            margin: 0;
-        }
+        .portfolio-summary > div { flex:1 1 30%; min-width:86px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02)); padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.02); }
+        .portfolio-summary strong { display:block; color:#8fe9ff; font-size:0.88rem; margin-bottom:6px; font-weight:500; }
+        .portfolio-summary p { font-size:1.8rem; font-weight:700; color:#f1fbff; margin:0; }
 
         /* ---------- Stats Panel ---------- */
-        .bot-stats {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 1rem;
-            text-align: center;
-            gap: 0.5rem;
-        }
+        .bot-stats { display:flex; gap:10px; justify-content:space-between; margin-top:10px; flex-wrap:wrap; }
         .bot-stats div {
-            background: rgba(0, 224, 255, 0.05);
-            border-radius: 10px;
-            padding: 0.6rem 1rem;
-            border: 1px solid rgba(0, 224, 255, 0.08);
-            min-width: 90px;
+            flex:1 1 30%;
+            min-width:90px;
+            padding:10px;
+            border-radius:12px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(0,0,0,0.03));
+            border: 1px solid rgba(255,255,255,0.02);
         }
-        .bot-stats strong {
-            display: block;
-            color: #00e0ff;
-            font-size: 0.9rem;
-            margin-bottom: 0.2rem;
-        }
-        .bot-stats p {
-            margin: 0;
-            font-size: 1.2rem;
-            color: #e6edf3;
-        }
+        .bot-stats strong { display:block; color:#9ff3ff; font-size:0.9rem; margin-bottom:6px; font-weight:600; }
+        .bot-stats p { margin:0; font-size:1.05rem; color:#e6f9fb; font-weight:700; }
 
-        /* ---------- Logs ---------- */
-        h3 {
-            margin-top: 2rem;
-            margin-bottom: 0.5rem;
-            color: #00e0ff;
-            font-weight: 300;
-            letter-spacing: 1px;
-        }
-        pre {
-            background: #000;
-            padding: 1rem;
+        /* ---------- Logs (wrap + glass) ---------- */
+        h3 { margin-top: 18px; margin-bottom: 8px; color: #99f2ff; font-weight:500; letter-spacing:0.6px; }
+        pre#log {
+            background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(6,8,10,0.45));
+            padding: 12px;
             border-radius: 12px;
-            max-height: 400px;
+            max-height: 420px;
             overflow-y: auto;
-            color: #00ff9d;
+            color: #98ffd9;
             font-family: 'Fira Code', monospace;
             font-size: 0.9rem;
-            line-height: 1.3;
-            box-shadow: inset 0 0 10px rgba(0, 255, 157, 0.08);
-            border: 1px solid rgba(0, 255, 157, 0.1);
+            line-height: 1.35;
+            box-shadow: inset 0 0 18px rgba(0, 200, 255, 0.03);
+            border: 1px solid rgba(0, 200, 255, 0.05);
+
+            /* WRAP behavior */
+            white-space: pre-wrap;     /* preserve newlines, wrap long lines */
+            word-break: break-word;    /* break long tokens (urls) */
+            -webkit-font-smoothing: antialiased;
         }
-        pre::-webkit-scrollbar { width: 6px; }
-        pre::-webkit-scrollbar-thumb {
-            background: rgba(0, 224, 255, 0.3);
-            border-radius: 10px;
+        pre#log::-webkit-scrollbar { width: 8px; height:8px; }
+        pre#log::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,200,255,0.12), rgba(0,200,255,0.06)); border-radius:8px; }
+
+        /* ---------- Footer Dock (visual cue) ---------- */
+        .dock {
+            margin-top: 18px;
+            display:flex;
+            justify-content:center;
+            gap:12px;
+            align-items:center;
+        }
+        .dock .pill {
+            height:10px;
+            width:140px;
+            border-radius:20px;
+            background: linear-gradient(90deg, rgba(0,200,255,0.06), rgba(120,80,255,0.02));
+            border:1px solid rgba(255,255,255,0.02);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
         }
 
         /* ---------- Responsive ---------- */
-        @media(max-width: 600px) {
-            .container { padding: 1rem; margin: 1rem; }
-            header { flex-direction: column; align-items: flex-start; gap: 1rem; }
-            .portfolio-summary, .bot-stats { flex-direction: column; gap: 0.5rem; }
+        @media (max-width: 880px) {
+            .page-wrap { padding: 10px; }
+            .container { padding: 16px; margin: 8px; }
+            .portfolio-summary > div, .bot-stats div { min-width: 120px; flex:1 1 45%; }
+            canvas { height: 260px !important; }
+            header h1 { font-size: 1.12rem; }
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            header { flex-direction: row; gap:10px; padding:10px; }
+            .mac-dots { display:flex; margin-right:8px; }
+            .container { margin: 8px 4px; padding: 12px; border-radius:12px; }
+            .portfolio-summary, .bot-stats { flex-direction: column; gap: 8px; }
+            .portfolio-summary > div, .bot-stats div { width:100%; flex: 1 1 auto; min-width: unset; }
+            canvas { height: 200px !important; }
+            pre#log { max-height: 300px; font-size: 0.86rem; }
+            .controls { display:flex; flex-direction:column; gap:8px; }
+            button { width: 100%; }
         }
     </style>
 </head>
-
 <body>
-    <header>
-        <h1>DEXtrader V5 DASHBOARD</h1>
-        <a href="/logout">Logout</a>
-    </header>
-
-    <div class="container">
-        <h2>Welcome, {{ user['username'] }}</h2>
-        <p><strong>Bot Name:</strong> {{ user['name'] }}</p>
-        <p><strong>Wallet Address:</strong> {{ user['address'] }}</p>
-
-        <!-- 🟦 UPDATED STATUS WITH STRATEGY NAME 🟦 -->
-        <p><strong>Status:</strong>
-            {% if user['is_active'] %}
-                <span class="status running">Running — {{ user['strategy'] }}</span>
-            {% else %}
-                <span class="status stopped">Stopped</span>
-            {% endif %}
-        </p>
-
-        <form method="get" action="/start/{{ user['id'] }}">
-            <button type="submit" class="start">Start Bot</button>
-        </form>
-        <form method="get" action="/stop/{{ user['id'] }}">
-            <button type="submit" class="stop">Stop Bot</button>
-        </form>
-
-        <div class="chart-container">
-            <h3>Portfolio Overview</h3>
-
-            <div class="portfolio-summary">
-                <div>
-                    <strong>USDT</strong>
-                    <p id="usdtBalance">--</p>
+    <div class="page-wrap">
+        <header>
+            <div style="display:flex;align-items:center;gap:12px">
+                <div class="mac-dots" aria-hidden="true">
+                    <div class="dot red"></div>
+                    <div class="dot yellow"></div>
+                    <div class="dot green"></div>
                 </div>
-                <div>
-                    <strong>WMATIC</strong>
-                    <p id="wmaticBalance">--</p>
-                </div>
-                <div>
-                    <strong>Total (USDT)</strong>
-                    <p id="portfolioValue">--</p>
-                </div>
+                <h1>
+                    DEXtrader V5 DASHBOARD
+                    <span class="brand-sub" style="margin-left:12px; font-weight:300; font-size:0.78rem;">Live · Glass UI</span>
+                </h1>
             </div>
 
-            <div class="bot-stats">
-                <div><strong>Initial</strong><p id="initialVal">--</p></div>
-                <div><strong>Growth</strong><p id="growthPct">--%</p></div>
-                <div><strong>Runtime</strong><p id="runtime">--:--:--</p></div>
+            <a href="/logout">Logout</a>
+        </header>
+
+        <div class="container">
+            <h2>Welcome, {{ user['username'] }}</h2>
+            <p><strong>Bot Name:</strong> {{ user['name'] }}</p>
+            <p><strong>Wallet Address:</strong> {{ user['address'] }}</p>
+
+            <!-- STATUS (unchanged IDs) -->
+            <p><strong>Status:</strong>
+                {% if user['is_active'] %}
+                    <span class="status running">Running — {{ user['strategy'] }}</span>
+                {% else %}
+                    <span class="status stopped">Stopped</span>
+                {% endif %}
+            </p>
+
+            <div class="controls" aria-hidden="false">
+                <form method="get" action="/start/{{ user['id'] }}">
+                    <button type="submit" class="start">Start Bot</button>
+                </form>
+                <form method="get" action="/stop/{{ user['id'] }}">
+                    <button type="submit" class="stop">Stop Bot</button>
+                </form>
             </div>
 
-            <canvas id="portfolioChart"></canvas>
+            <div class="chart-container" role="region" aria-label="Portfolio Overview">
+                <div class="chart-header">
+                    <div class="title">Portfolio Overview</div>
+                    <div class="muted">Live</div>
+                </div>
+
+                <div class="portfolio-summary">
+                    <div>
+                        <strong>USDT</strong>
+                        <p id="usdtBalance">--</p>
+                    </div>
+                    <div>
+                        <strong>WMATIC</strong>
+                        <p id="wmaticBalance">--</p>
+                    </div>
+                    <div>
+                        <strong>Total (USDT)</strong>
+                        <p id="portfolioValue">--</p>
+                    </div>
+                </div>
+
+                <div class="bot-stats">
+                    <div><strong>Initial</strong><p id="initialVal">--</p></div>
+                    <div><strong>Growth</strong><p id="growthPct">--%</p></div>
+                    <div><strong>Runtime</strong><p id="runtime">--:--:--</p></div>
+                </div>
+
+                <canvas id="portfolioChart"></canvas>
+            </div>
+
+            <h3>Logs</h3>
+            <pre id="log"></pre>
+
+            <div class="dock" aria-hidden="true">
+                <div class="pill"></div>
+            </div>
         </div>
-
-        <h3>Logs</h3>
-        <pre id="log"></pre>
     </div>
 
 <script>
@@ -271,6 +328,7 @@
     const evtSource = new EventSource(`/stream_logs/${uid}`);
 
     evtSource.onmessage = function(e) {
+        // Append safely and keep scroll at bottom
         logElement.innerHTML += e.data + "\n";
         logElement.scrollTop = logElement.scrollHeight;
     };
@@ -287,9 +345,9 @@
             labels: ["Initial"],
             datasets: [{
                 label: 'Portfolio Value (USDT)',
-                data: [0],
-                borderColor: '#00e0ff',
-                backgroundColor: 'rgba(0,224,255,0.08)',
+                data: [0], // baseline, will be replaced with initial value
+                borderColor: '#7ee0ff',
+                backgroundColor: 'rgba(126,224,255,0.06)',
                 borderWidth: 2,
                 tension: 0.35,
                 fill: true,
@@ -301,15 +359,16 @@
             animation: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { display: false },
-                y: { 
-                    ticks: { color: '#8b949e' }, 
-                    grid: { color: 'rgba(255,255,255,0.05)' } 
+                x: { display: false }, // Hide timestamps
+                y: {
+                    ticks: { color: '#9aa7ad' },
+                    grid: { color: 'rgba(255,255,255,0.03)' }
                 }
             }
         }
     });
 
+    // ---------- Portfolio Fetch ----------
     let baselineSet = false;
     let baselineValue = 0;
 
@@ -338,9 +397,11 @@
                     baselineSet = true;
                 }
 
+                // Add new point
                 chart.data.datasets[0].data.push(data.total_value_usdt);
-                chart.data.labels.push("");
+                chart.data.labels.push(""); // no label shown
 
+                // Keep baseline (index 0) intact, trim live points to ~300 samples
                 if (chart.data.datasets[0].data.length > 301) {
                     chart.data.datasets[0].data.splice(1, 1);
                     chart.data.labels.splice(1, 1);

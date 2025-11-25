@@ -517,6 +517,7 @@ import logging
 import time
 from uniswap_v3_manager import UniswapV3Manager
 from core.state import update_lp_state, get_lp_state
+from core.lp_helper import push_lp_stat
 import asyncio
 
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
@@ -568,12 +569,11 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
 
                 # --- Dynamic import to avoid circular import ---
                 try:
-                    from dashboard.app import lpstat
-                    asyncio.run(lpstat(BOT_UID, current_stat))
-                    logging.info("✅ Pushed current_stat directly to API handler")
-                except Exception as api_e:
-                    logging.warning(f"❌ Failed to push LP stat to API handler: {api_e}")
-
+                    push_lp_stat(BOT_UID, current_stat)
+                    logging.info("✅ LP stat updated via helper function")
+                except Exception as e:
+                    logging.warning(f"❌ Failed to update LP stat: {e}")
+    
                 # Check position status
                 is_active = manager.check_position_status(active_id, price)
                 if not is_active:

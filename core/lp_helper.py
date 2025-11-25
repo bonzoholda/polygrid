@@ -7,12 +7,17 @@ _user_lp_state = {}  # uid -> { price, lp_usdt, lp_wmatic, lp_total_value, activ
 
 def push_lp_stat(uid: int, stat: dict):
     """
-    Update LP state in core/state.py
-    Can be called from both runner and FastAPI route
+    Update LP state in core/state.py and also in memory.
+    Can be called from both runner and FastAPI route.
     """
+    # Update DB / persistent state
     update_lp_state(uid, stat)
-    return stat
 
+    # Update in-memory store
+    with _state_lock:
+        _user_lp_state[int(uid)] = stat.copy()
+
+    return stat
 
 def get_lp_stat(uid: int):
     """

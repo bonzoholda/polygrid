@@ -24,9 +24,6 @@ import config
 from config import usdt, wmatic, USDT_ADDR, WMATIC_ADDR
 
 
-# The UID associated with the bot's configuration/owner (populated by start_bot via env)
-BOT_UID = int(os.getenv("BOT_UID", "0"))
-
 # --- V3 Constants ---
 NFT_MANAGER_ADDR = "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
 POOL_FEE = 3000
@@ -519,6 +516,9 @@ from uniswap_v3_manager import UniswapV3Manager
 from core.state import update_lp_state, get_lp_state
 from core.lp_helper import push_lp_stat
 import asyncio
+
+# The UID associated with the bot's configuration/owner (populated by start_bot via env)
+BOT_UID = int(os.getenv("BOT_UID", "0"))
 
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
     logging.info("🦄 Uniswap V3 Strategy Started.")

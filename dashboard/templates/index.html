@@ -261,97 +261,119 @@
         <pre id="log"></pre>
     </div>
 
-    <script>
-        const logElement = document.getElementById("log");
-        const uid = {{ user['id'] }};
-        const evtSource = new EventSource(`/stream_logs/${uid}`);
+<script>
+    const logElement = document.getElementById("log");
+    const uid = {{ user['id'] }};
+    const evtSource = new EventSource(`/stream_logs/${uid}`);
 
-        evtSource.onmessage = function(e) {
-            logElement.innerHTML += e.data + "\n";
-            logElement.scrollTop = logElement.scrollHeight;
-        };
+    evtSource.onmessage = function(e) {
+        logElement.innerHTML += e.data + "\n";
+        logElement.scrollTop = logElement.scrollHeight;
+    };
 
-        evtSource.onerror = function() {
-            console.error("SSE connection lost, attempting to reconnect...");
-        };
+    evtSource.onerror = function() {
+        console.error("SSE connection lost, attempting to reconnect...");
+    };
 
-        // ---------- Chart ----------
-        const ctx = document.getElementById('portfolioChart').getContext('2d');
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Portfolio Value (USDT)',
-                    data: [],
-                    borderColor: '#00e0ff',
-                    backgroundColor: 'rgba(0,224,255,0.08)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    fill: true,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                    y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+    // ---------- Chart ----------
+    const ctx = document.getElementById('portfolioChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ["Initial"],
+            datasets: [{
+                label: 'Portfolio Value (USDT)',
+                data: [0], // baseline, will be replaced with initial value
+                borderColor: '#00e0ff',
+                backgroundColor: 'rgba(0,224,255,0.08)',
+                borderWidth: 2,
+                tension: 0.35,
+                fill: true,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: false }, // Hide timestamps
+                y: { 
+                    ticks: { color: '#8b949e' }, 
+                    grid: { color: 'rgba(255,255,255,0.05)' } 
                 }
-            }
-        });
-
-        // ---------- Portfolio Fetch ----------
-        let initialRecorded = false;
-
-        async function fetchPortfolio() {
-            try {
-                const res = await fetch(`/api/portfolio/${uid}`);
-                const data = await res.json();
-
-                if (data.total_value_usdt) {
-                    const now = new Date().toLocaleTimeString();
-                    if (!initialRecorded) {
-                        await fetch(`/api/botstat/${uid}`, { method: "POST" });
-                        initialRecorded = true;
-                    }
-
-                    chart.data.labels.push(now);
-                    chart.data.datasets[0].data.push(data.total_value_usdt);
-                    if (chart.data.labels.length > 30) {
-                        chart.data.labels.shift();
-                        chart.data.datasets[0].data.shift();
-                    }
-                    chart.update();
-
-                    document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
-                    document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
-                    document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
-                }
-            } catch (err) {
-                console.warn("Failed to fetch portfolio data", err);
             }
         }
+    });
 
-        async function updateBotStats() {
-            try {
-                const res = await fetch(`/api/botstat/${uid}`);
-                const stat = await res.json();
-                if (!stat.error) {
-                    document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);
-                    document.getElementById("growthPct").textContent = stat.growth_pct.toFixed(2) + "%";
-                    document.getElementById("runtime").textContent = stat.duration;
-                }
-            } catch (e) {
-                console.warn("Failed to fetch bot stats", e);
+    // ---------- Portfolio Fetch ----------
+    let baselineSet = false;
+    let baselineValue = 0;
+
+    async function initBaseline() {
+        try {
+            const res = await fetch(`/api/botstat/${uid}`);
+            const stat = await res.json();
+            if (stat && !stat.error) {
+                baselineValue = stat.initial_value;
+                chart.data.datasets[0].data[0] = baselineValue;
+                chart.update();
             }
+        } catch (e) {
+            console.warn("Failed to init baseline", e);
         }
+    }
 
-        fetchPortfolio();
-        updateBotStats();
-        setInterval(fetchPortfolio, 15000);
-        setInterval(updateBotStats, 30000);
-    </script>
+    async function fetchPortfolio() {
+        try {
+            const res = await fetch(`/api/portfolio/${uid}`);
+            const data = await res.json();
+
+            if (data.total_value_usdt) {
+                if (!baselineSet) {
+                    await initBaseline();
+                    baselineSet = true;
+                }
+
+                // Add new point
+                chart.data.datasets[0].data.push(data.total_value_usdt);
+                chart.data.labels.push(""); // no label shown
+
+                // Keep baseline (index 0) intact, trim live points to ~300 samples
+                if (chart.data.datasets[0].data.length > 301) {
+                    chart.data.datasets[0].data.splice(1, 1);
+                    chart.data.labels.splice(1, 1);
+                }
+                chart.update("none");
+
+                document.getElementById("usdtBalance").textContent = data.usdt_balance.toFixed(4);
+                document.getElementById("wmaticBalance").textContent = data.wmatic_balance.toFixed(4);
+                document.getElementById("portfolioValue").textContent = data.total_value_usdt.toFixed(4);
+            }
+        } catch (err) {
+            console.warn("Failed to fetch portfolio data", err);
+        }
+    }
+
+    async function updateBotStats() {
+        try {
+            const res = await fetch(`/api/botstat/${uid}`);
+            const stat = await res.json();
+            if (!stat.error) {
+                document.getElementById("initialVal").textContent = stat.initial_value.toFixed(3);
+                document.getElementById("growthPct").textContent = stat.growth_pct.toFixed(2) + "%";
+                document.getElementById("runtime").textContent = stat.duration;
+            }
+        } catch (e) {
+            console.warn("Failed to fetch bot stats", e);
+        }
+    }
+
+    fetchPortfolio();
+    updateBotStats();
+    setInterval(fetchPortfolio, 15000);
+    setInterval(updateBotStats, 30000);
+</script>
+
 </body>
 </html> 

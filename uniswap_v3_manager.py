@@ -562,14 +562,14 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                     "active": True
                 }
                 logging.info(f"Updating core_state_value: {state_data}")
-                update_lp_state(BOT_UID, state_data)
+                update_lp_state(uid, state_data)
 
-                current_stat = get_lp_state(BOT_UID)
+                current_stat = get_lp_state(uid)
                 logging.info(f"Updated state val: {current_stat}")
 
                 # --- Dynamic import to avoid circular import ---
                 try:
-                    push_lp_stat(BOT_UID, current_stat)
+                    push_lp_stat(uid, current_stat)
                     logging.info("✅ LP stat updated via helper function")
 
                     from core.lp_helper import _user_lp_state

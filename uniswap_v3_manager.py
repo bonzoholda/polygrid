@@ -305,3 +305,23 @@ def start_uniswap_v3_runner(uid: int, poll_interval=60, pool_address: str = None
     thread = threading.Thread(target=run_uniswap_v3_loop, args=(uid, poll_interval, pool_address), daemon=True)
     thread.start()
     return thread
+
+
+# ---------- Entry Point ----------
+if __name__ == "__main__":
+    import logging
+    import time
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+    logging.info("🚀 UniswapV3 bot initialized.")
+    try:
+        logging.info("⚙️ Starting UniswapV3 Strategy Loop...")
+        run_uniswap_v3_loop()  # 👈 this calls your actual rebalancing logic
+    except KeyboardInterrupt:
+        logging.info("🛑 Manual stop received. Exiting Asset Balancer gracefully...")
+    except Exception as e:
+        logging.exception(f"❌ Unexpected error in Asset Balancer: {e}")

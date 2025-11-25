@@ -140,10 +140,10 @@ def get_portfolio(request: Request):
         return {"error": str(e)}
 
 # -----Uniswap LP tracking----
-@app.post("/api/lpstat/{uid}")
+@app.get("/api/lpstat/{uid}")
 async def lpstat(uid: int, stat: dict):
     # store or return the stat
-    update_lp_state(uid, stat)
+    get_lp_state(uid, stat)
     return {"status": "ok"}
 
 

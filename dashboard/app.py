@@ -19,7 +19,7 @@ from manager import (
     get_bot_stat,
 )
 from core.portfolio import fetch_portfolio
-from core.lp_helper import push_lp_stat
+from core.lp_helper import get_lp_stat
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "supersecret"))
@@ -142,11 +142,8 @@ def get_portfolio(request: Request):
 
 # -----Uniswap LP tracking----
 @app.get("/api/lpstat/{uid}")
-def lpstat(uid: int, stat: dict):
-    """
-    LP stat API route simply calls helper function
-    """
-    return push_lp_stat(uid, stat)
+def get_lpstat(uid: int):
+    return get_lp_state(uid)
 
 
 # ---------- Bot statistics (initial value + runtime + growth) ----------

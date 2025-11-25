@@ -316,6 +316,29 @@ class UniswapV3Manager:
             logging.error(f"Collect failed: {e}")
 
     # -----------------------
+    # Active position helper
+    # -----------------------
+    def get_active_position_id(self):
+        """
+        Returns the first active NFT position ID owned by this manager.
+        Returns None if no position is found.
+        """
+        try:
+            balance = self.nft_manager.functions.balanceOf(self.owner).call()
+            if balance == 0:
+                return None
+            # Simply return the first NFT ID
+            token_id = self.nft_manager.functions.tokenOfOwnerByIndex(self.owner, 0).call()
+            pos = self.nft_manager.functions.positions(token_id).call()
+            if pos[7] == 0:  # liquidity == 0
+                return None
+            return token_id
+        except Exception as e:
+            logging.error(f"get_active_position_id error: {e}")
+            return None
+
+    
+    # -----------------------
     # Portfolio value (wallet + LP)
     # -----------------------
     def get_position_asset_value(self):

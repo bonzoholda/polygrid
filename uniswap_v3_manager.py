@@ -511,14 +511,12 @@ class UniswapV3Manager:
             return 0.0, 0.0, 0.0
 
 # -------------------------
-# Runner (updates per-UID state)
+# Runner (updates per-UID state) - Direct LP push to API handler (dynamic import)
 # -------------------------
-
 import logging
 import time
 from uniswap_v3_manager import UniswapV3Manager
 from core.state import update_lp_state, get_lp_state
-from dashboard.app import lpstat  # <-- FastAPI route handler
 import asyncio
 
 def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
@@ -546,7 +544,6 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
             active_id = manager.get_active_position_id()
 
             if active_id:
-                # Fetch position value
                 usdt_amt, wmatic_amt, total_value = manager.get_position_asset_value(active_id, price)
 
                 logging.info("----------------------------------------------------------------")
@@ -555,7 +552,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info(f"💵 **TOTAL LP VALUE (USD): ${total_value:.2f}**")
                 logging.info("----------------------------------------------------------------")
 
-                # Update core state
+                # update per-UID state
                 state_data = {
                     "wmatic_price": float(price),
                     "lp_usdt": float(usdt_amt),
@@ -566,19 +563,18 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 logging.info(f"Updating core_state_value: {state_data}")
                 update_lp_state(BOT_UID, state_data)
 
-                # Get latest state
                 current_stat = get_lp_state(BOT_UID)
                 logging.info(f"Updated state val: {current_stat}")
 
-                # --- Push directly to FastAPI route ---
+                # --- Dynamic import to avoid circular import ---
                 try:
-                    # call route handler directly
+                    from dashboard.app import lpstat
                     asyncio.run(lpstat(BOT_UID, current_stat))
                     logging.info("✅ Pushed current_stat directly to API handler")
                 except Exception as api_e:
                     logging.warning(f"❌ Failed to push LP stat to API handler: {api_e}")
 
-                # Check if position is still active
+                # Check position status
                 is_active = manager.check_position_status(active_id, price)
                 if not is_active:
                     logging.info("♻️ Position closed. Preparing to re-enter...")
@@ -620,6 +616,7 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
         except Exception as e:
             logging.exception(f"CRITICAL THREAD ERROR: {e}")
             time.sleep(10)
+
 
 
 

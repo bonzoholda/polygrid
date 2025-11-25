@@ -571,6 +571,11 @@ def run_uniswap_v3_loop(poll_interval=60, pool_address: str = None):
                 try:
                     push_lp_stat(BOT_UID, current_stat)
                     logging.info("✅ LP stat updated via helper function")
+
+                    from core.lp_helper import _user_lp_state
+                    print(_user_lp_state)  # Should show your UID as key and LP JSON as value
+
+                
                 except Exception as e:
                     logging.warning(f"❌ Failed to update LP stat: {e}")
     

@@ -79,7 +79,7 @@
            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
            backdrop-filter: blur(3.6px);
            -webkit-backdrop-filter: blur(3.6px);
-           border: 1px solid rgba(135, 154, 236, 0.47);
+           border: 1px solid rgba(135, 154, 236, 0.15);
         }
         h2 {
             font-size: 1.3rem;
@@ -103,74 +103,75 @@
         .status.running { background: #00c38a; }
         .status.stopped { background: #b54a4a; }
 
-        /* ---------- Buttons (dock-like glass) ---------- */
+        /* ===============================
+        Base iOS Glass Button Style
+        =============================== */
         .controls button {
-            padding: 10px 24px;
+            padding: 12px 26px;
             border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-family: 'Exo 2';
+            border-radius: 16px;
+            font-size: 15px;
             font-weight: 400;
             cursor: pointer;
-            color: #fff;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.45);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            background-size: 300% 300%;
-            transition: all 0.3s ease-in-out;
-            border: 1px solid rgba(255,255,255,0.25);  /* glassy border */
+            color: rgba(255,255,255,0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.25);
+            box-shadow:
+                0 1px 2px rgba(255,255,255,0.25) inset,
+                0 4px 12px rgba(0,0,0,0.25);
+            transition: all 0.25s ease;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.35);
         }
         
-        /* ===== BLUE METALLIC GLASS (Start Bot) ===== */
-        button.start {
-            background: linear-gradient(
-                145deg,
-                rgba(93, 173, 226, 0.35),
-                rgba(46, 134, 193, 0.35),
-                rgba(27, 79, 114, 0.35),
-                rgba(133, 193, 233, 0.35),
-                rgba(46, 134, 193, 0.35)
-            );
+        /* Hover effect — subtle lift like iOS */
+        .controls button:hover {
+            transform: translateY(-2px);
             box-shadow:
-                0 4px 14px rgba(0, 123, 255, 0.25),
-                inset 0 1px 2px rgba(255,255,255,0.35),
-                inset 0 -2px 4px rgba(0,0,0,0.25);
+                0 1px 2px rgba(255,255,255,0.35) inset,
+                0 6px 16px rgba(0,0,0,0.35);
+            opacity: 1;
+        }
+        
+        /* Pressed (active) effect */
+        .controls button:active {
+            transform: translateY(0);
+            box-shadow:
+                0 1px 2px rgba(255,255,255,0.2) inset,
+                0 2px 6px rgba(0,0,0,0.25);
+            opacity: 0.9;
+        }
+        
+        /* ===============================
+           Start Bot = Blue iOS Glass
+           =============================== */
+        button.start {
+            background: rgba(30, 144, 255, 0.18);  /* dodgerblue-ish */
+            border-color: rgba(135, 206, 255, 0.45);
+            box-shadow:
+                0 1px 3px rgba(255,255,255,0.35) inset,
+                0 4px 14px rgba(30, 144, 255, 0.35);
         }
         
         button.start:hover {
-            background-position: 100% 0%;
-            box-shadow:
-                0 4px 18px rgba(0, 123, 255, 0.45),
-                inset 0 1px 3px rgba(255,255,255,0.5),
-                inset 0 -3px 6px rgba(0,0,0,0.35);
-            opacity: 0.95;
+            background: rgba(30, 144, 255, 0.28);
         }
         
-        /* ===== RED METALLIC GLASS (Stop Bot) ===== */
+        /* ===============================
+           Stop Bot = Red iOS Glass
+           =============================== */
         button.stop {
-            background: linear-gradient(
-                145deg,
-                rgba(236, 112, 99, 0.35),
-                rgba(203, 67, 53, 0.35),
-                rgba(123, 36, 28, 0.35),
-                rgba(241, 148, 138, 0.35),
-                rgba(203, 67, 53, 0.35)
-            );
+            background: rgba(255, 71, 66, 0.18);   /* iOS system red */
+            border-color: rgba(255, 180, 180, 0.45);
             box-shadow:
-                0 4px 14px rgba(255, 0, 0, 0.25),
-                inset 0 1px 2px rgba(255,255,255,0.35),
-                inset 0 -2px 4px rgba(0,0,0,0.25);
+                0 1px 3px rgba(255,255,255,0.35) inset,
+                0 4px 14px rgba(255, 71, 66, 0.35);
         }
         
         button.stop:hover {
-            background-position: 100% 0%;
-            box-shadow:
-                0 4px 18px rgba(255, 0, 0, 0.45),
-                inset 0 1px 3px rgba(255,255,255,0.5),
-                inset 0 -3px 6px rgba(0,0,0,0.35);
-            opacity: 0.95;
+            background: rgba(255, 71, 66, 0.28);
         }
-
 
 
         .card-container {

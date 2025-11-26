@@ -108,7 +108,7 @@
         =============================== */
         .controls button {
             padding: 12px 26px;
-            margin-top: 2rem;
+            margin-top: 0.5rem;
             border: none;
             border-radius: 16px;
             font-size: 15px;
@@ -337,7 +337,7 @@
     </div>
 
     
-        <div class="chart-container">
+        <div class="container">
             <h3>Portfolio Overview</h3>
 
             <div class="portfolio-summary">
@@ -354,18 +354,24 @@
                     <p id="portfolioValue">--</p>
                 </div>
             </div>
+        </div>
 
+         <div class="container"> 
             <div class="bot-stats">
                 <div><strong>Initial</strong><p id="initialVal">--</p></div>
                 <div><strong>Growth</strong><p id="growthPct">--%</p></div>
                 <div><strong>Runtime</strong><p id="runtime">--:--:--</p></div>
             </div>
-
+         </div>
+             
+       <div class="container">     
             <canvas id="portfolioChart"></canvas>
         </div>
 
-        <h3>Logs</h3>
-        <pre id="log"></pre>
+        <div class="container">
+            <h3>Logs</h3>
+            <pre id="log"></pre>
+        </div>
     
 
 <script>

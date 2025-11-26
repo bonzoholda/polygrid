@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
 
@@ -29,6 +29,20 @@ SWAP_GAS_BUMP = 1.5  # bump per swap retry
 # slippage multiplier steps when we progressively relax minOut (1.00 -> 0.98 -> 0.95)
 SLIPPAGE_STEPS = [1.00, 0.98, 0.95]
 
+# ---------- Caching configuration ----------
+# Balance cache (reduce RPC calls)
+BALANCE_CACHE = {
+    "USDT": {"value": None, "timestamp": 0},
+    "WMATIC": {"value": None, "timestamp": 0},
+}
+BALANCE_REFRESH_INTERVAL = 60  # refresh every 60 seconds
+
+# Price cache for POL from OKX
+PRICE_CACHE = {
+    "POL": {"value": None, "timestamp": 0},
+}
+PRICE_REFRESH_INTERVAL = 60  # user selected option B -> 60 seconds
+
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
@@ -40,41 +54,49 @@ ERC20_ABI = [
     {"constant": True, "inputs": [{"name": "_owner", "type": "address"}, {"name": "_spender", "type": "address"}], "name": "allowance", "outputs": [{"name": "remaining", "type": "uint256"}], "type": "function"},
 ]
 
+# ---------- Internal caches ----------
+_DECIMALS_CACHE: Dict[str, int] = {}
+
 # ---------- Helpers ----------
+def _lower_addr(a: str) -> str:
+    try:
+        return a.lower()
+    except Exception:
+        return str(a)
 
-# ---------- Decimal cache ----------
-_DECIMALS_CACHE = {}
-
-def get_token_decimals(token_contract):
+def get_token_decimals(token_contract) -> int:
     """
     Safe ERC20 decimals() fetch with caching.
     token_contract: web3 contract instance
     """
     try:
-        addr = token_contract.address.lower()
+        addr = _lower_addr(token_contract.address)
         if addr in _DECIMALS_CACHE:
             return _DECIMALS_CACHE[addr]
 
         decimals = token_contract.functions.decimals().call()
-        _DECIMALS_CACHE[addr] = decimals
-        return decimals
+        _DECIMALS_CACHE[addr] = int(decimals)
+        return int(decimals)
 
     except Exception as e:
-        logging.error(f"❌ Failed to fetch decimals for {token_contract.address}: {e}")
+        logging.error(f"❌ Failed to fetch decimals for {getattr(token_contract, 'address', '?')}: {e}")
         # fallback for known tokens
-        if token_contract.address.lower() == USDT_ADDR.lower():
-            return 6
-        if token_contract.address.lower() == WMATIC_ADDR.lower():
-            return 18
+        try:
+            if _lower_addr(token_contract.address) == _lower_addr(USDT_ADDR):
+                return 6
+            if _lower_addr(token_contract.address) == _lower_addr(WMATIC_ADDR):
+                return 18
+        except Exception:
+            pass
         return 18
 
-def to_decimals(amount_float, decimals):
-    """Convert float → raw integer token amount"""
-    return int(Decimal(amount_float) * (10 ** decimals))
 
-def from_decimals(amount_int, decimals):
-    """Convert raw integer token amount → float"""
-    return float(Decimal(amount_int) / (10 ** decimals))
+def safe_get_decimals(token_contract) -> int:
+    """Simple guarded decimals fetch (no caching); kept for compatibility."""
+    try:
+        return token_contract.functions.decimals().call()
+    except Exception:
+        return 18
 
 
 def to_raw(amount: Decimal, decimals: int) -> int:
@@ -85,37 +107,121 @@ def from_raw(amount_int: int, decimals: int) -> float:
     return float(Decimal(amount_int) / (10 ** decimals))
 
 
-def safe_get_decimals(token_contract) -> int:
-    try:
-        return token_contract.functions.decimals().call()
-    except Exception:
-        # sensible default
-        return 18
+def to_decimals(amount_float, decimals):
+    """Convert float → raw integer token amount"""
+    return int(Decimal(amount_float) * (10 ** decimals))
 
-def estimate_amounts_out(amount_in, path):
+
+def from_decimals(amount_int, decimals):
+    """Convert raw integer token amount → float"""
+    return float(Decimal(amount_int) / (10 ** decimals))
+
+
+# ---------- Router / token contract objects ----------
+try:
+    _usdt = usdt
+except Exception:
+    _usdt = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)
+
+try:
+    _wmatic = wmatic
+except Exception:
+    _wmatic = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)
+
+_router = router  # should be contract in config
+
+# ---------- Estimate amounts out (single canonical implementation) ----------
+def estimate_amounts_out(amount_in_raw: int, path: List[str]) -> Optional[List[int]]:
     """
-    Wrapper for router.getAmountsOut()
-    Returns list of raw integer amounts per hop.
+    Returns list of raw integer amounts per hop or None on failure.
     """
     try:
-        return router.functions.getAmountsOut(int(amount_in), path).call()
+        amounts = _router.functions.getAmountsOut(int(amount_in_raw), path).call()
+        return [int(a) for a in amounts]
     except Exception as e:
-        logging.warning(f"⚠️ getAmountsOut failed for {path}: {e}")
+        logging.warning(f"estimate_amounts_out failed for path {path}: {e}")
         return None
 
 
+# ---------- Cached token balance helper ----------
+def get_cached_token_balance(token_name: str, token_contract, address: str) -> Optional[int]:
+    """
+    Returns raw integer token balance (not human decimals) from cache or on-chain.
+    If RPC fails, returns the last cached raw integer or None if none exists.
+    """
+    now = time.time()
+    token_name = str(token_name)
 
+    # Prepare cache entry if missing
+    if token_name not in BALANCE_CACHE:
+        BALANCE_CACHE[token_name] = {"value": None, "timestamp": 0}
+
+    cache_entry = BALANCE_CACHE[token_name]
+    if cache_entry["value"] is not None:
+        age = now - cache_entry["timestamp"]
+        if age < BALANCE_REFRESH_INTERVAL:
+            return cache_entry["value"]
+
+    # otherwise fetch fresh
+    try:
+        fresh = token_contract.functions.balanceOf(address).call()
+        BALANCE_CACHE[token_name] = {"value": int(fresh), "timestamp": now}
+        return int(fresh)
+    except Exception as e:
+        logging.warning(f"[WARN] Failed to fetch {token_name} balance: {e}")
+        # fallback to cached raw value (may be None)
+        return cache_entry["value"]
+
+
+# ---------- On-chain reads (human readable floats) ----------
+def get_onchain_token_balance(token_contract, address: str) -> float:
+    """
+    Returns human float token balance using decimals conversion.
+    Uses cached raw integer balances to reduce RPC calls.
+    """
+    try:
+        # try to read raw cached value first
+        # determine a friendly token_name for the cache (USDT / WMATIC) if possible
+        token_addr = _lower_addr(getattr(token_contract, "address", ""))
+        if token_addr == _lower_addr(USDT_ADDR):
+            key = "USDT"
+        elif token_addr == _lower_addr(WMATIC_ADDR):
+            key = "WMATIC"
+        else:
+            key = token_addr  # fallback to address string
+
+        raw = get_cached_token_balance(key, token_contract, address)
+        if raw is None:
+            # attempt one direct call if nothing cached
+            raw = int(token_contract.functions.balanceOf(address).call())
+
+        dec = safe_get_decimals(token_contract)
+        return from_raw(raw, dec)
+    except Exception as e:
+        logging.exception("Failed to read on-chain token balance.")
+        return 0.0
+
+
+# ---------- Gas / nonce helpers ----------
 def get_nonce() -> int:
     """Use 'pending' so replacement txs can be created safely."""
-    return w3.eth.get_transaction_count(OWNER, "pending")
+    try:
+        return w3.eth.get_transaction_count(OWNER, "pending")
+    except Exception as e:
+        logging.warning(f"get_nonce RPC failed: {e} — attempting without 'pending'")
+        try:
+            return w3.eth.get_transaction_count(OWNER)
+        except Exception as e2:
+            logging.error(f"get_nonce fallback failed: {e2}")
+            raise
 
 
 def get_node_gas_price() -> int:
     """Return the provider's suggested gas price (wei)."""
     try:
         return w3.eth.gas_price
-    except Exception:
-        # fallback to a moderate default (30 gwei)
+    except Exception as e:
+        logging.warning(f"get_node_gas_price failed: {e}; using fallback 30 gwei")
         return Web3.to_wei(30, "gwei")
 
 
@@ -133,68 +239,21 @@ def gas_params(multiplier: float = 1.0, max_gwei: Optional[int] = None) -> Optio
     if price > GAS_PRICE_LIMIT:
         logging.warning(f"⚠️ Gas price {price/1e9:.1f} gwei > ceiling {GAS_PRICE_LIMIT/1e9:.1f} gwei → skipping tx.")
         return None
-    return {"gasPrice": price, "chainId": w3.eth.chain_id}
-
-
-# ---------- Contracts (use contract objects from config where possible) ----------
-# If config provides `usdt` and `wmatic` contract objects, use them. Otherwise create from addresses.
-try:
-    _usdt = usdt
-except Exception:
-    _usdt = w3.eth.contract(address=USDT_ADDR, abi=ERC20_ABI)
-
-try:
-    _wmatic = wmatic
-except Exception:
-    _wmatic = w3.eth.contract(address=WMATIC_ADDR, abi=ERC20_ABI)
-
-_router = router  # should be contract in config
-
-# ---------- On-chain reads ----------
-def get_onchain_token_balance(token_contract, address):
+    # chainId may call RPC; try to get it but fallback to None if RPC fails
     try:
-        bal = token_contract.functions.balanceOf(address).call()
-        dec = safe_get_decimals(token_contract)
-        return from_raw(bal, dec)
+        chain_id = w3.eth.chain_id
     except Exception as e:
-        logging.exception("Failed to read on-chain token balance.")
-        return 0.0
+        logging.warning(f"Could not fetch chainId: {e}; leaving it out of gas params.")
+        chain_id = None
 
-
-# ---------- Price fetching ----------
-def get_pol_price_from_okx():
-    """
-    Fetch latest POL/USDT price from OKX public ticker.
-    """
-    try:
-        url = "https://www.okx.com/api/v5/market/ticker"
-        params = {"instId": "POL-USDT"}
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        if data.get("code") != "0" or not data.get("data"):
-            logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
-            return None
-        price = float(data["data"][0]["last"])
-        logging.info(f"💰 Current POL price: {price:.6f} USDT")
-        return price
-    except Exception as e:
-        logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
-        return None
-
-
-# ---------- Estimate amounts out ----------
-def estimate_amounts_out(amount_in_raw: int, path: List[str]) -> Optional[List[int]]:
-    try:
-        amounts = _router.functions.getAmountsOut(int(amount_in_raw), path).call()
-        return [int(a) for a in amounts]
-    except Exception as e:
-        logging.warning(f"estimate_amounts_out failed: {e}")
-        return None
+    params = {"gasPrice": price}
+    if chain_id is not None:
+        params["chainId"] = chain_id
+    return params
 
 
 # ---------- Approvals ----------
-def get_allowance(token_contract, owner_addr, spender_addr) -> int:
+def get_allowance(token_contract, owner_addr: str, spender_addr: str) -> int:
     try:
         return int(token_contract.functions.allowance(owner_addr, spender_addr).call())
     except Exception as e:
@@ -202,7 +261,7 @@ def get_allowance(token_contract, owner_addr, spender_addr) -> int:
         return 0
 
 
-def approve_if_needed(token_contract, spender_addr, amount_required_raw: int) -> bool:
+def approve_if_needed(token_contract, spender_addr: str, amount_required_raw: int) -> bool:
     """
     Ensure router has at least amount_required_raw allowance.
     Approve MAX_UINT once if insufficient.
@@ -214,7 +273,7 @@ def approve_if_needed(token_contract, spender_addr, amount_required_raw: int) ->
             logging.info(f"✅ Sufficient allowance ({allowance}) — no approval needed.")
             return True
 
-        logging.info(f"🔐 Requesting approval (MAX_UINT) for {token_contract.address} -> {spender_addr} ...")
+        logging.info(f"🔐 Requesting approval (MAX_UINT) for {getattr(token_contract,'address', '?')} -> {spender_addr} ...")
         # Build approve tx
         tx = token_contract.functions.approve(spender_addr, MAX_UINT).build_transaction({
             "from": OWNER,
@@ -231,9 +290,8 @@ def approve_if_needed(token_contract, spender_addr, amount_required_raw: int) ->
         # best-effort wait and verify
         try:
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=RECEIPT_TIMEOUT)
-            if receipt is None or receipt.status != 1:
+            if receipt is None or getattr(receipt, "status", None) != 1:
                 logging.warning("⚠️ Approval tx did not succeed (receipt.status != 1).")
-                # still check allowance on-chain (some nodes delayed)
             else:
                 logging.info("✅ Approval tx confirmed successful.")
         except Exception:
@@ -263,8 +321,8 @@ def send_tx(tx: dict, max_retries: int = SENDTX_MAX_RETRIES, gas_bump: float = S
         logging.warning("⏳ Transaction skipped due to high gas.")
         return None
 
-    # operate on a local copy
-    tx_local = dict(tx)
+    tx_local: Dict[str, Any] = dict(tx)
+
     # apply initial gas params
     initial_params = gas_params(multiplier=1.0)
     if initial_params is None:
@@ -320,7 +378,11 @@ def send_tx(tx: dict, max_retries: int = SENDTX_MAX_RETRIES, gas_bump: float = S
                 return None
             new_params["gasPrice"] = new_price
             # refresh nonce (use pending to replace)
-            new_nonce = get_nonce()
+            try:
+                new_nonce = get_nonce()
+            except Exception as e_nonce:
+                logging.warning(f"Could not refresh nonce for replacement attempt: {e_nonce}")
+                return None
             tx_local.update({"nonce": new_nonce, **new_params})
             try:
                 signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
@@ -356,7 +418,7 @@ def send_tx(tx: dict, max_retries: int = SENDTX_MAX_RETRIES, gas_bump: float = S
             signed_retry = w3.eth.account.sign_transaction(tx_local, private_key=PRIVATE_KEY)
             raw_retry = getattr(signed_retry, "raw_transaction", None) or getattr(signed_retry, "rawTransaction", None)
             tx_hash_retry = w3.eth.send_raw_transaction(raw_retry)
-            logging.info(f"🔄 Replacement TX after unexpected error sent: {tx_hash_retry.hex()} (waiting up to {RECEIPT_TIMEOUT}s)")
+            logging.info(f"🔄 Replacement TX after unexpected error sent: {tx_hash_retry.hex()}")
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash_retry, timeout=RECEIPT_TIMEOUT)
             if receipt and getattr(receipt, "status", None) == 1:
                 logging.info(f"🧾 Replacement TX confirmed in block {receipt.blockNumber}")
@@ -522,16 +584,46 @@ def swap_wmatic_to_usdt(amount_wmatic: float, slippage: float = 0.02) -> Optiona
         return None
 
 
-# ----------------------------
-# The rest of your helpers / AI / model functions (kept here for continuity)
-# You can keep your existing ai_buy_signal, fetch_price_history, etc. below.
-# (If they already live in this file, keep them as-is; otherwise import them.)
-# ----------------------------
+# ---------- Price fetching with caching ----------
+def get_pol_price_from_okx():
+    """
+    Fetch latest POL/USDT price from OKX public ticker with caching.
+    Cached for PRICE_REFRESH_INTERVAL seconds (60s chosen).
+    """
+    now = time.time()
+    try:
+        # return cached if not expired
+        if PRICE_CACHE["POL"]["value"] is not None:
+            age = now - PRICE_CACHE["POL"]["timestamp"]
+            if age < PRICE_REFRESH_INTERVAL:
+                return PRICE_CACHE["POL"]["value"]
 
-# Example small helper preserved from your previous code: (feel free to replace with your actual implementations)
+        # fetch fresh from OKX
+        url = "https://www.okx.com/api/v5/market/ticker"
+        params = {"instId": "POL-USDT"}
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("code") != "0" or not data.get("data"):
+            logging.warning(f"⚠️ Failed to fetch POL price. Code={data.get('code')}, Msg={data.get('msg')}")
+            return PRICE_CACHE["POL"]["value"]
+
+        price = float(data["data"][0]["last"])
+        PRICE_CACHE["POL"] = {"value": price, "timestamp": now}
+        logging.info(f"💰 Current POL price: {price:.6f} USDT")
+        return price
+
+    except Exception as e:
+        logging.error(f"❌ Failed to fetch POL price from OKX: {e}")
+        return PRICE_CACHE["POL"]["value"]
+
+
+# ---------- Compatibility alias ----------
 def get_pol_price_from_okx_quiet():
     """Alias kept for compatibility if other modules call this name."""
     return get_pol_price_from_okx()
 
 
+# ----------------------------
 # End of utils.py
+# ----------------------------

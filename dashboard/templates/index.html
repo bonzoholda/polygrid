@@ -281,27 +281,73 @@
         pre#log::-webkit-scrollbar { width: 8px; height:8px; }
         pre#log::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,200,255,0.12), rgba(0,200,255,0.06)); border-radius:8px; }
 
+/* ---------- Responsive (iOS Rhythm – Option B) ---------- */
+@media (max-width: 880px) {
+    .page-wrap { padding: 16px; } /* was 10px */
+    .container {
+        padding: 20px;           /* iOS rhythm: 20 */
+        margin: 16px 0;          /* more breathing space */
+        border-radius: 18px;
+    }
 
-        /* ---------- Responsive ---------- */
-        @media (max-width: 880px) {
-            .page-wrap { padding: 10px; }
-            .container { padding: 16px; margin: 8px; }
-            .portfolio-summary > div, .bot-stats div { min-width: 120px; flex:1 1 45%; }
-            canvas { height: 260px !important; }
-            header h1 { font-size: 1.12rem; }
-        }
+    .portfolio-summary > div,
+    .bot-stats div {
+        min-width: 140px;
+        flex: 1 1 45%;
+    }
 
-        @media (max-width: 600px) {
-            body { padding: 12px; }
-            header { flex-direction: row; gap:10px; padding:10px; }
-            .mac-dots { display:flex; margin-right:8px; }
-            .container { margin: 8px 4px; padding: 12px; border-radius:12px; }
-            .portfolio-summary, .bot-stats { flex-direction: column; gap: 8px; }
-            .portfolio-summary > div, .bot-stats div { width:100%; flex: 1 1 auto; min-width: unset; }
-            canvas { height: 200px !important; }
-            pre#log { max-height: 300px; font-size: 0.86rem; }
-            .controls { display:flex; flex-direction:column; gap:8px; }
-            button { width: 100%; }
+    canvas { height: 260px !important; }
+    header h1 { font-size: 1.15rem; letter-spacing: 0.3px; }
+}
+
+@media (max-width: 600px) {
+    body { padding: 16px; } /* iOS mobile pad */
+    header {
+        flex-direction: row;
+        gap: 12px;              /* iOS rhythm: 12 */
+        padding: 14px;          /* was 10px */
+    }
+
+    .mac-dots { display:flex; margin-right:10px; }
+
+    .container {
+        margin: 18px 0;         /* bigger space between cards */
+        padding: 18px;          /* iOS rhythm: 18 (between 16 & 20) */
+        border-radius: 16px;
+    }
+
+    .portfolio-summary,
+    .bot-stats {
+        flex-direction: column;
+        gap: 14px;               /* iOS rhythm: 14 */
+    }
+
+    .portfolio-summary > div,
+    .bot-stats div {
+        width: 100%;
+        flex: 1 1 auto;
+        min-width: unset;
+    }
+
+    canvas { height: 200px !important; }
+
+    pre#log {
+        max-height: 320px;
+        font-size: 0.88rem;
+        padding: 14px;           /* more breathing room */
+    }
+
+    .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;               /* iOS rhythm */
+    }
+
+    button { width: 100%; }
+}
+
+
+        
         }
     </style>
 </head>
